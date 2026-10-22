@@ -1,11 +1,15 @@
+
 from flask import Flask, jsonify
+
 from backend.config import Config
 from backend.extensions import db
 from backend.models.user import User
-from backend.routes.marks import marks_bp
 from backend.models.semester import Semester
 from backend.models.subject import Subject
 from backend.models.student import Student
+
+from backend.routes.marks import marks_bp
+from backend.routes.subjects import subjects_bp
 
 
 def create_app():
@@ -14,7 +18,9 @@ def create_app():
 
     db.init_app(app)
 
+    # Register API blueprints
     app.register_blueprint(marks_bp)
+    app.register_blueprint(subjects_bp)
 
     @app.route("/")
     def home():
