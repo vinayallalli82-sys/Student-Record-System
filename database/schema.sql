@@ -1,4 +1,3 @@
-
 CREATE DATABASE IF NOT EXISTS student_record_system;
 USE student_record_system;
 
@@ -48,7 +47,17 @@ CREATE TABLE IF NOT EXISTS subjects (
     FOREIGN KEY (semester_id) REFERENCES semesters(semester_id)
 );
 
--- 5. Attendance records
+-- 5. Student subject enrollments
+CREATE TABLE IF NOT EXISTS student_subjects (
+    student_id INT NOT NULL,
+    subject_id INT NOT NULL,
+    enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (student_id, subject_id),
+    FOREIGN KEY (student_id) REFERENCES students(student_id),
+    FOREIGN KEY (subject_id) REFERENCES subjects(subject_id)
+);
+
+-- 6. Attendance records
 CREATE TABLE IF NOT EXISTS attendance (
     attendance_id INT AUTO_INCREMENT PRIMARY KEY,
     student_id INT NOT NULL,
@@ -63,7 +72,7 @@ CREATE TABLE IF NOT EXISTS attendance (
     FOREIGN KEY (recorded_by) REFERENCES users(user_id)
 );
 
--- 6. Assessment marks
+-- 7. Assessment marks
 CREATE TABLE IF NOT EXISTS marks (
     mark_id INT AUTO_INCREMENT PRIMARY KEY,
     student_id INT NOT NULL,

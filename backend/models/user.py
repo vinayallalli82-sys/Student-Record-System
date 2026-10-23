@@ -1,13 +1,13 @@
-
 from datetime import datetime
 
+from flask_login import UserMixin
 from sqlalchemy import Boolean, DateTime, Enum, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.extensions import db
 
 
-class User(db.Model):
+class User(UserMixin, db.Model):
     __tablename__ = "users"
 
     user_id: Mapped[int] = mapped_column(
@@ -29,3 +29,6 @@ class User(db.Model):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=True, server_default=text("CURRENT_TIMESTAMP")
     )
+
+    def get_id(self):
+        return str(self.user_id)
