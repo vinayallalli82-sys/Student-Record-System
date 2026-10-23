@@ -7,6 +7,7 @@ from backend.extensions import db
 from backend.routes.auth import auth_bp
 from backend.routes.marks import marks_bp
 from backend.routes.subjects import subjects_bp
+import backend.models
 
 
 def create_app():
