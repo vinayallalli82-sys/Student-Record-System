@@ -1,6 +1,7 @@
 
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required, login_user, logout_user
+from flask_wtf.csrf import generate_csrf
 from sqlalchemy import select
 from werkzeug.security import check_password_hash
 
@@ -8,6 +9,11 @@ from backend.extensions import db
 from backend.models.user import User
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
+
+
+@auth_bp.get("/csrf")
+def csrf_token():
+    return jsonify({"csrf_token": generate_csrf()}), 200
 
 
 @auth_bp.post("/login")

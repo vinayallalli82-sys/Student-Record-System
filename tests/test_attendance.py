@@ -11,6 +11,7 @@ from backend.models.attendance import Attendance
 from backend.models.student_subject import StudentSubject
 from werkzeug.security import generate_password_hash
 
+
 @pytest.fixture
 def app(monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "pytest-test-secret-key")
@@ -22,16 +23,8 @@ def app(monkeypatch):
 
     from backend.config import Config
 
-    monkeypatch.setattr(
-        Config,
-        "SQLALCHEMY_DATABASE_URI",
-        "sqlite://",
-    )
-    monkeypatch.setattr(
-        Config,
-        "SECRET_KEY",
-        "pytest-test-secret-key",
-    )
+    monkeypatch.setattr(Config, "SQLALCHEMY_DATABASE_URI", "sqlite://")
+    monkeypatch.setattr(Config, "SECRET_KEY", "pytest-test-secret-key")
 
     app = create_app()
     app.config.update(TESTING=True)
@@ -126,11 +119,37 @@ def client(app):
     return app.test_client()
 
 
+def get_csrf_token(client):
+    response = client.get("/api/auth/csrf")
+    assert response.status_code == 200
+    return response.get_json()["csrf_token"]
+
+
+def csrf_headers(client):
+    return {"X-CSRFToken": get_csrf_token(client)}
+
+
 def login(client, email, password="StudentTest123!"):
+    token = get_csrf_token(client)
     return client.post(
         "/api/auth/login",
         json={"email": email, "password": password},
+        headers={"X-CSRFToken": token},
     )
+
+
+def faculty_login(client):
+    response = login(client, "faculty@example.com", "FacultyTest123!")
+    assert response.status_code == 200
+
+
+def attendance_payload(ids, date="2026-10-23", status="Present"):
+    return {
+        "student_id": ids["student_a"],
+        "subject_id": ids["subject"],
+        "attendance_date": date,
+        "status": status,
+    }
 
 
 def test_protected_attendance_requires_login(client):
@@ -139,9 +158,10 @@ def test_protected_attendance_requires_login(client):
 
 
 def test_student_cannot_view_another_students_percentage(client, app):
-    login(client, "student.a@example.com")
-    ids = app.test_ids
+    response = login(client, "student.a@example.com")
+    assert response.status_code == 200
 
+    ids = app.test_ids
     response = client.get(
         f"/api/attendance/percentage/{ids['student_b']}/{ids['subject']}"
     )
@@ -150,34 +170,27 @@ def test_student_cannot_view_another_students_percentage(client, app):
 
 
 def test_student_cannot_create_attendance(client, app):
-    login(client, "student.a@example.com")
-    ids = app.test_ids
+    response = login(client, "student.a@example.com")
+    assert response.status_code == 200
 
+    ids = app.test_ids
     response = client.post(
         "/api/attendance",
-        json={
-            "student_id": ids["student_a"],
-            "subject_id": ids["subject"],
-            "attendance_date": "2026-10-23",
-            "status": "Present",
-        },
+        json=attendance_payload(ids),
+        headers=csrf_headers(client),
     )
 
     assert response.status_code == 403
 
 
 def test_faculty_can_record_attendance(client, app):
-    login(client, "faculty@example.com", "FacultyTest123!")
+    faculty_login(client)
     ids = app.test_ids
 
     response = client.post(
         "/api/attendance",
-        json={
-            "student_id": ids["student_a"],
-            "subject_id": ids["subject"],
-            "attendance_date": "2026-10-23",
-            "status": "Present",
-        },
+        json=attendance_payload(ids),
+        headers=csrf_headers(client),
     )
 
     assert response.status_code == 201
@@ -185,7 +198,7 @@ def test_faculty_can_record_attendance(client, app):
 
 
 def test_unenrolled_student_cannot_receive_attendance(client, app):
-    login(client, "faculty@example.com", "FacultyTest123!")
+    faculty_login(client)
     ids = app.test_ids
 
     with app.app_context():
@@ -195,23 +208,27 @@ def test_unenrolled_student_cannot_receive_attendance(client, app):
         db.session.delete(enrollment)
         db.session.commit()
 
+    payload = {
+        "student_id": ids["student_b"],
+        "subject_id": ids["subject"],
+        "attendance_date": "2026-10-23",
+        "status": "Present",
+    }
+
     response = client.post(
         "/api/attendance",
-        json={
-            "student_id": ids["student_b"],
-            "subject_id": ids["subject"],
-            "attendance_date": "2026-10-23",
-            "status": "Present",
-        },
+        json=payload,
+        headers=csrf_headers(client),
     )
 
     assert response.status_code == 400
 
 
 def test_zero_attendance_percentage_is_zero(client, app):
-    login(client, "student.a@example.com")
-    ids = app.test_ids
+    response = login(client, "student.a@example.com")
+    assert response.status_code == 200
 
+    ids = app.test_ids
     response = client.get(
         f"/api/attendance/percentage/{ids['student_a']}/{ids['subject']}"
     )
@@ -224,17 +241,13 @@ def test_zero_attendance_percentage_is_zero(client, app):
 
 
 def test_attendance_update_recalculates_percentage(client, app):
-    login(client, "faculty@example.com", "FacultyTest123!")
+    faculty_login(client)
     ids = app.test_ids
 
     created = client.post(
         "/api/attendance",
-        json={
-            "student_id": ids["student_a"],
-            "subject_id": ids["subject"],
-            "attendance_date": "2026-10-23",
-            "status": "Present",
-        },
+        json=attendance_payload(ids),
+        headers=csrf_headers(client),
     )
     assert created.status_code == 201
 
@@ -242,10 +255,13 @@ def test_attendance_update_recalculates_percentage(client, app):
     updated = client.put(
         f"/api/attendance/{attendance_id}",
         json={"status": "Absent"},
+        headers=csrf_headers(client),
     )
     assert updated.status_code == 200
 
-    login(client, "student.a@example.com")
+    response = login(client, "student.a@example.com")
+    assert response.status_code == 200
+
     percentage = client.get(
         f"/api/attendance/percentage/{ids['student_a']}/{ids['subject']}"
     )
@@ -255,10 +271,95 @@ def test_attendance_update_recalculates_percentage(client, app):
 
 
 def test_logout_blocks_protected_access(client):
-    login(client, "student.a@example.com")
+    response = login(client, "student.a@example.com")
+    assert response.status_code == 200
 
-    logout_response = client.post("/api/auth/logout")
+    logout_response = client.post(
+        "/api/auth/logout",
+        headers=csrf_headers(client),
+    )
     assert logout_response.status_code == 200
 
     response = client.get("/api/attendance/my")
+    assert response.status_code == 401
+
+
+def test_duplicate_attendance_is_rejected(client, app):
+    faculty_login(client)
+    ids = app.test_ids
+    payload = attendance_payload(ids)
+
+    first = client.post(
+        "/api/attendance",
+        json=payload,
+        headers=csrf_headers(client),
+    )
+    assert first.status_code == 201
+
+    duplicate = client.post(
+        "/api/attendance",
+        json=payload,
+        headers=csrf_headers(client),
+    )
+    assert duplicate.status_code == 409
+
+
+@pytest.mark.parametrize("bad_date", ["23-10-2026", "not-a-date", "2026-02-30"])
+def test_malformed_attendance_date_is_rejected(client, app, bad_date):
+    faculty_login(client)
+    ids = app.test_ids
+
+    response = client.post(
+        "/api/attendance",
+        json=attendance_payload(ids, date=bad_date),
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.parametrize("bad_status", ["Late", "Present-ish", "", None])
+def test_invalid_attendance_status_is_rejected(client, app, bad_status):
+    faculty_login(client)
+    ids = app.test_ids
+
+    response = client.post(
+        "/api/attendance",
+        json=attendance_payload(ids, status=bad_status),
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 400
+
+
+def test_updating_nonexistent_attendance_returns_404(client):
+    faculty_login(client)
+
+    response = client.put(
+        "/api/attendance/999999",
+        json={"status": "Absent"},
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 404
+
+
+def test_missing_csrf_token_is_rejected(client, app):
+    faculty_login(client)
+    ids = app.test_ids
+
+    response = client.post(
+        "/api/attendance",
+        json=attendance_payload(ids),
+    )
+
+    assert response.status_code == 400
+
+
+def test_invalid_login_credentials_are_rejected(client):
+    response = login(
+        client,
+        "student.a@example.com",
+        "WrongPassword123!",
+    )
     assert response.status_code == 401
