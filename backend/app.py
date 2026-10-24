@@ -1,32 +1,32 @@
 
 from flask import Flask, jsonify
+from flask_wtf.csrf import CSRFProtect, generate_csrf
 
 from backend.config import Config
 from backend.extensions import db
-from backend.models.user import User
-from backend.models.semester import Semester
-from backend.models.subject import Subject
-from backend.models.student import Student
-
+from backend.routes.auth import auth_bp
 from backend.routes.marks import marks_bp
 from backend.routes.subjects import subjects_bp
+import backend.models
 
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
+    CSRFProtect(app)
     db.init_app(app)
 
     # Register API blueprints
     app.register_blueprint(marks_bp)
     app.register_blueprint(subjects_bp)
+    app.register_blueprint(auth_bp)
 
     @app.route("/")
     def home():
         return jsonify({
             "message": "Student Record System API is running!",
-            "status": "success"
+            "status": "success",
         })
 
     @app.route("/api/health")
@@ -41,14 +41,18 @@ def create_app():
             db.session.execute(text("SELECT 1"))
             return jsonify({
                 "database": "connected",
-                "status": "success"
+                "status": "success",
             })
         except Exception:
             app.logger.exception("Database connection check failed")
             return jsonify({
                 "database": "unavailable",
-                "status": "error"
+                "status": "error",
             }), 503
+
+    @app.route("/api/auth/csrf", methods=["GET"])
+    def csrf_token():
+        return jsonify({"csrf_token": generate_csrf()})
 
     return app
 

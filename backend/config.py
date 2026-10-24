@@ -8,7 +8,14 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 
 class Config:
-    SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-change-me")
+    SECRET_KEY = os.getenv("SECRET_KEY")
+
+    if not SECRET_KEY:
+        raise RuntimeError("SECRET_KEY must be set in the .env file")
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+    PERMANENT_SESSION_LIFETIME = 1800
 
     SQLALCHEMY_DATABASE_URI = URL.create(
         drivername="mysql+pymysql",
