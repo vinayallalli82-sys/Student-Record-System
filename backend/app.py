@@ -5,9 +5,6 @@ from flask_wtf.csrf import CSRFError, CSRFProtect
 from backend.config import Config
 from backend.extensions import db
 from backend.models.user import User
-from backend.models.semester import Semester
-from backend.models.subject import Subject
-from backend.models.student import Student
 
 from backend.routes.marks import marks_bp
 from backend.routes.subjects import subjects_bp
@@ -22,7 +19,6 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    # Initialize extensions
     db.init_app(app)
     csrf.init_app(app)
 
@@ -47,7 +43,6 @@ def create_app():
             "message": error.description,
         }), 400
 
-    # Register API blueprints
     app.register_blueprint(marks_bp)
     app.register_blueprint(subjects_bp)
     app.register_blueprint(attendance_bp)
@@ -57,7 +52,7 @@ def create_app():
     def home():
         return jsonify({
             "message": "Student Record System API is running!",
-            "status": "success"
+            "status": "success",
         })
 
     @app.route("/api/health")
@@ -72,13 +67,13 @@ def create_app():
             db.session.execute(text("SELECT 1"))
             return jsonify({
                 "database": "connected",
-                "status": "success"
+                "status": "success",
             })
         except Exception:
             app.logger.exception("Database connection check failed")
             return jsonify({
                 "database": "unavailable",
-                "status": "error"
+                "status": "error",
             }), 503
 
     return app

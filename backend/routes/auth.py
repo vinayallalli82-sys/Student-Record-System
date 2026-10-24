@@ -1,4 +1,3 @@
-
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required, login_user, logout_user
 from flask_wtf.csrf import generate_csrf
@@ -29,9 +28,11 @@ def login():
     if not isinstance(email, str) or not isinstance(password, str):
         return jsonify({"error": "Email and password are required."}), 400
 
-    user = db.session.scalar(
-        select(User).where(User.email == email.strip().lower())
-    )
+    email = email.strip().lower()
+    if not email or not password:
+        return jsonify({"error": "Email and password are required."}), 400
+
+    user = db.session.scalar(select(User).where(User.email == email))
 
     if (
         user is None

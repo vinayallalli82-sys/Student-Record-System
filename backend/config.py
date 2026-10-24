@@ -1,3 +1,4 @@
+
 import os
 
 from dotenv import load_dotenv
@@ -15,6 +16,13 @@ class Config:
         raise RuntimeError(
             "SECRET_KEY is missing. Set it in your local .env file."
         )
+
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = (
+        os.getenv("COOKIE_SECURE", "false").lower() == "true"
+    )
+    PERMANENT_SESSION_LIFETIME = 1800
 
     SQLALCHEMY_DATABASE_URI = URL.create(
         drivername="mysql+pymysql",
