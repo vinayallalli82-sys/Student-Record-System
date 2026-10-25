@@ -1,17 +1,32 @@
 
 from decimal import Decimal, InvalidOperation
+from functools import wraps
 
 from flask import Blueprint, current_app, jsonify, request
+from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from backend.extensions import db
 from backend.models.mark import Mark
 
+
 marks_bp = Blueprint("marks", __name__, url_prefix="/api/marks")
 
 
+def faculty_required(view_function):
+    """Allow only authenticated faculty to manage marks."""
+
+    @wraps(view_function)
+    @login_required
+    def wrapped(*args, **kwargs):
+        if current_user.role != "Faculty":
+            return jsonify({"error": "Faculty access required."}), 403
+        return view_function(*args, **kwargs)
+
+    return wrapped
+
+
 def parse_marks(data):
-    
     """Validate and parse the marks request data."""
     required = (
         "student_id",
@@ -28,17 +43,14 @@ def parse_marks(data):
     if missing:
         return None, f"Missing required fields: {', '.join(missing)}"
 
-    # Reject booleans and non-integer IDs.
     ids = (data["student_id"], data["subject_id"])
     if any(
-        isinstance(value, bool)
-        or not isinstance(value, int)
+        isinstance(value, bool) or not isinstance(value, int)
         for value in ids
     ):
         return None, "Student ID and subject ID must be integers."
 
     student_id, subject_id = ids
-
     if student_id <= 0 or subject_id <= 0:
         return None, "Student ID and subject ID must be positive integers."
 
@@ -68,7 +80,10 @@ def parse_marks(data):
     if obtained > maximum:
         return None, "Marks obtained cannot exceed maximum marks."
 
-    if obtained.as_tuple().exponent < -2 or maximum.as_tuple().exponent < -2:
+    if (
+        obtained.as_tuple().exponent < -2
+        or maximum.as_tuple().exponent < -2
+    ):
         return None, "Marks can have at most two decimal places."
 
     if obtained >= Decimal("10000") or maximum >= Decimal("10000"):
@@ -100,12 +115,16 @@ def mark_to_dict(mark):
 
 
 @marks_bp.post("/")
+@faculty_required
 def create_mark():
     data, error = parse_marks(request.get_json(silent=True))
     if error:
         return jsonify({"error": error}), 400
 
-    mark = Mark(**data)
+    mark = Mark(
+        **data,
+        entered_by=current_user.user_id,
+    )
 
     try:
         db.session.add(mark)
@@ -128,6 +147,7 @@ def create_mark():
 
 
 @marks_bp.put("/<int:mark_id>")
+@faculty_required
 def update_mark(mark_id):
     data, error = parse_marks(request.get_json(silent=True))
     if error:
@@ -141,6 +161,7 @@ def update_mark(mark_id):
         for field, value in data.items():
             setattr(mark, field, value)
 
+        # Keep the original faculty member recorded in entered_by.
         db.session.commit()
         return jsonify(mark_to_dict(mark)), 200
 
