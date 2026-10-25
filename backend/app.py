@@ -1,6 +1,8 @@
+
 from flask import Flask, jsonify
 from flask_login import LoginManager
 from flask_wtf.csrf import CSRFError, CSRFProtect
+from sqlalchemy import text
 
 from backend.config import Config
 from backend.extensions import db
@@ -10,6 +12,7 @@ from backend.routes.marks import marks_bp
 from backend.routes.subjects import subjects_bp
 from backend.routes.attendance import attendance_bp
 from backend.routes.auth import auth_bp
+from backend.routes.gpa import gpa_bp
 
 
 csrf = CSRFProtect()
@@ -47,6 +50,7 @@ def create_app():
     app.register_blueprint(subjects_bp)
     app.register_blueprint(attendance_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(gpa_bp)
 
     @app.route("/")
     def home():
@@ -61,8 +65,6 @@ def create_app():
 
     @app.route("/api/db-health")
     def database_health():
-        from sqlalchemy import text
-
         try:
             db.session.execute(text("SELECT 1"))
             return jsonify({
