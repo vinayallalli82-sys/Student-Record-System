@@ -1,5 +1,5 @@
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template
 from flask_login import LoginManager
 from flask_wtf.csrf import CSRFError, CSRFProtect
 from sqlalchemy import text
@@ -13,13 +13,18 @@ from backend.routes.subjects import subjects_bp
 from backend.routes.attendance import attendance_bp
 from backend.routes.auth import auth_bp
 from backend.routes.gpa import gpa_bp
+from backend.routes.academic_records import academic_records_bp
 
 
 csrf = CSRFProtect()
 
 
 def create_app():
-    app = Flask(__name__)
+    app = Flask(
+        __name__,
+        template_folder="../frontend/templates",
+        static_folder="../frontend/static",
+    )
     app.config.from_object(Config)
 
     db.init_app(app)
@@ -37,7 +42,9 @@ def create_app():
 
     @login_manager.unauthorized_handler
     def unauthorized():
-        return jsonify({"error": "Authentication required."}), 401
+        return jsonify({
+            "error": "Authentication required."
+        }), 401
 
     @app.errorhandler(CSRFError)
     def handle_csrf_error(error):
@@ -46,22 +53,24 @@ def create_app():
             "message": error.description,
         }), 400
 
+    # Register all existing application API blueprints.
     app.register_blueprint(marks_bp)
     app.register_blueprint(subjects_bp)
     app.register_blueprint(attendance_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(gpa_bp)
+    app.register_blueprint(academic_records_bp)
 
+    # Render the dashboard at the application home page.
     @app.route("/")
     def home():
-        return jsonify({
-            "message": "Student Record System API is running!",
-            "status": "success",
-        })
+        return render_template("dashboard.html")
 
     @app.route("/api/health")
     def health():
-        return jsonify({"status": "healthy"})
+        return jsonify({
+            "status": "healthy"
+        })
 
     @app.route("/api/db-health")
     def database_health():
@@ -72,7 +81,9 @@ def create_app():
                 "status": "success",
             })
         except Exception:
-            app.logger.exception("Database connection check failed")
+            app.logger.exception(
+                "Database connection check failed"
+            )
             return jsonify({
                 "database": "unavailable",
                 "status": "error",
