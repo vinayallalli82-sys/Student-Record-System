@@ -1,11 +1,26 @@
--
-.venv/
-.env
-__pycache__/
-*.py[cod]
-.env
-__pycache__/
-*.py[cod]
+# Python
 .venv/
 venv/
+__pycache__/
+*.py[cod]
 .pytest_cache/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+
+# Generated archives
+*.zip
+
+# Editor and OS files
+.vscode/
+.DS_Store
+Thumbs.db
