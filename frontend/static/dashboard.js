@@ -2,8 +2,9 @@
 "use strict";
 
 /*
- * Student Record System — NFR-003 Usability
- * Matches the element IDs in frontend/templates/dashboard.html.
+ * NFR-003: Usability improvements for the Student Record System.
+ * Uses the element IDs defined in dashboard.html.
+ * Keeps all attendance, GPA, and authentication logic in the backend.
  */
 
 const loginPanel = document.getElementById("loginPanel");
@@ -14,10 +15,8 @@ const globalMessage = document.getElementById("globalMessage");
 const logoutButton = document.getElementById("logoutButton");
 
 let currentUser = null;
-let csrfToken = null;
 
-/* ---------- Accessible messages ---------- */
-
+/* Display an accessible status or error message. */
 function showMessage(element, message, isError = false) {
     if (!element) return;
 
@@ -28,32 +27,13 @@ function showMessage(element, message, isError = false) {
     element.classList.toggle("success-message", !isError);
 }
 
-function setLoading(button, loading, loadingText, originalText) {
-    if (!button) return;
-
-    button.disabled = loading;
-    button.textContent = loading ? loadingText : originalText;
+function clearMessage(element) {
+    if (!element) return;
+    element.textContent = "";
+    element.classList.remove("error-message", "success-message");
 }
 
-/* ---------- CSRF protection and API requests ---------- */
-
-async function getCsrfToken() {
-    const response = await fetch("/api/auth/csrf", {
-        method: "GET",
-        credentials: "same-origin",
-        headers: { Accept: "application/json" }
-    });
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok || !data.csrf_token) {
-        throw new Error("Unable to initialize a secure request. Refresh the page and try again.");
-    }
-
-    csrfToken = data.csrf_token;
-    return csrfToken;
-}
-
+/* Use the existing backend API with session cookies and CSRF protection. */
 async function api(url, options = {}) {
     const method = (options.method || "GET").toUpperCase();
     const headers = {
@@ -63,7 +43,20 @@ async function api(url, options = {}) {
     };
 
     if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
-        headers["X-CSRFToken"] = await getCsrfToken();
+        const csrfResponse = await fetch("/api/auth/csrf", {
+            credentials: "same-origin",
+            headers: { Accept: "application/json" }
+        });
+
+        const csrfData = await csrfResponse.json().catch(() => ({}));
+
+        if (!csrfResponse.ok || !csrfData.csrf_token) {
+            throw new Error(
+                "Unable to start a secure request. Refresh the page and try again."
+            );
+        }
+
+        headers["X-CSRFToken"] = csrfData.csrf_token;
     }
 
     const response = await fetch(url, {
@@ -76,53 +69,45 @@ async function api(url, options = {}) {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-        if (response.status === 401) {
-            throw new Error("Your session may have expired. Please sign in again.");
-        }
-
         throw new Error(
             data.error ||
             data.message ||
-            `The request failed (HTTP ${response.status}).`
+            `Request failed (HTTP ${response.status}).`
         );
     }
 
     return data;
 }
 
-/* ---------- View navigation ---------- */
-
+/* Display one dashboard section at a time. */
 function showView(viewId) {
-    const viewIds = ["attendanceView", "gpaView", "facultyView"];
+    ["attendanceView", "gpaView", "facultyView"].forEach((id) => {
+        const section = document.getElementById(id);
 
-    viewIds.forEach((id) => {
-        const view = document.getElementById(id);
-        if (view) {
-            view.classList.toggle("hidden", id !== viewId);
+        if (section) {
+            section.classList.toggle("hidden", id !== viewId);
         }
     });
 
-    const selectedView = document.getElementById(viewId);
-    const heading = selectedView?.querySelector("h2");
+    clearMessage(globalMessage);
+
+    const heading = document
+        .getElementById(viewId)
+        ?.querySelector("h2");
 
     if (heading) {
         heading.setAttribute("tabindex", "-1");
         heading.focus();
     }
-
-    if (globalMessage) {
-        globalMessage.textContent = "";
-    }
 }
 
-/* ---------- Safe table rendering ---------- */
-
-function renderTable(container, columns, rows) {
+/* Safely display records without inserting HTML from API responses. */
+function renderTable(container, columns, records) {
     if (!container) return;
 
     container.replaceChildren();
 
-    if (!Array.isArray(rows) || rows.length === 0) {
+    if (!Array.isArray(records) || records.length === 0) {
         container.textContent = "No records are available.";
         return;
     }
@@ -143,44 +128,35 @@ function renderTable(container, columns, rows) {
 
     const tbody = document.createElement("tbody");
 
-    rows.forEach((record) => {
-        const tr = document.createElement("tr");
+    records.forEach((record) => {
+        const row = document.createElement("tr");
 
         columns.forEach((column) => {
-            const td = document.createElement("td");
+            const cell = document.createElement("td");
             const value = record[column.key];
 
-            td.textContent =
+            cell.textContent =
                 value === null || value === undefined || value === ""
                     ? "—"
                     : String(value);
 
-            tr.appendChild(td);
+            row.appendChild(cell);
         });
 
-        tbody.appendChild(tr);
+        tbody.appendChild(row);
     });
 
     table.appendChild(tbody);
     container.appendChild(table);
 }
 
-/* ---------- Login and dashboard state ---------- */
-
+/* Open the correct dashboard for the authenticated user. */
 function openDashboard(user) {
     currentUser = user;
 
-    if (loginPanel) {
-        loginPanel.classList.add("hidden");
-    }
-
-    if (dashboardPanel) {
-        dashboardPanel.classList.remove("hidden");
-    }
-
-    if (logoutButton) {
-        logoutButton.classList.remove("hidden");
-    }
+    loginPanel?.classList.add("hidden");
+    dashboardPanel?.classList.remove("hidden");
+    logoutButton?.classList.remove("hidden");
 
     const welcomeTitle = document.getElementById("welcomeTitle");
     const userDetails = document.getElementById("userDetails");
@@ -198,65 +174,61 @@ function openDashboard(user) {
     const isFaculty =
         user.role === "Faculty" || user.role === "Administrator";
 
-    const gpaNav = document.getElementById("gpaNav");
-    const facultyNav = document.getElementById("facultyNav");
+    document.getElementById("gpaNav")
+        ?.classList.toggle("hidden", !isStudent);
 
-    if (gpaNav) {
-        gpaNav.classList.toggle("hidden", !isStudent);
-    }
+    document.getElementById("facultyNav")
+        ?.classList.toggle("hidden", !isFaculty);
 
-    if (facultyNav) {
-        facultyNav.classList.toggle("hidden", !isFaculty);
-    }
-
-    showMessage(globalMessage, "You are signed in successfully.");
+    clearMessage(loginMessage);
+    showMessage(globalMessage, "Signed in successfully.");
     showView("attendanceView");
 }
 
-function closeDashboard(message = "Please sign in to continue.") {
+/* Return to a clean login screen without showing an error by default. */
+function closeDashboard(message = "") {
     currentUser = null;
-    csrfToken = null;
 
-    if (dashboardPanel) {
-        dashboardPanel.classList.add("hidden");
+    dashboardPanel?.classList.add("hidden");
+    loginPanel?.classList.remove("hidden");
+    logoutButton?.classList.add("hidden");
+
+    loginForm?.reset();
+
+    clearMessage(globalMessage);
+
+    if (message) {
+        showMessage(loginMessage, message);
+    } else {
+        clearMessage(loginMessage);
     }
-
-    if (loginPanel) {
-        loginPanel.classList.remove("hidden");
-    }
-
-    if (logoutButton) {
-        logoutButton.classList.add("hidden");
-    }
-
-    if (loginForm) {
-        loginForm.reset();
-    }
-
-    showMessage(loginMessage, message);
-
-    document.getElementById("email")?.focus();
 }
 
-/* ---------- Login ---------- */
-
+/* Login form. */
 if (loginForm) {
     loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
-        const emailInput = document.getElementById("email");
-        const passwordInput = document.getElementById("password");
-        const submitButton = loginForm.querySelector('button[type="submit"]');
-
-        const email = emailInput?.value.trim() || "";
-        const password = passwordInput?.value || "";
+        const email = document.getElementById("email")?.value.trim() || "";
+        const password = document.getElementById("password")?.value || "";
+        const submitButton = loginForm.querySelector(
+            'button[type="submit"]'
+        );
 
         if (!email || !password) {
-            showMessage(loginMessage, "Enter your email address and password.", true);
+            showMessage(
+                loginMessage,
+                "Enter your email address and password.",
+                true
+            );
             return;
         }
 
-        setLoading(submitButton, true, "Signing in...", "Sign in");
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.textContent = "Signing in...";
+        }
+
         showMessage(loginMessage, "Signing in...");
 
         try {
@@ -277,16 +249,19 @@ if (loginForm) {
                 true
             );
         } finally {
-            setLoading(submitButton, false, "Signing in...", "Sign in");
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.textContent = "Sign in";
+            }
         }
     });
 }
 
-/* ---------- Logout ---------- */
-
+/* Logout. */
 if (logoutButton) {
     logoutButton.addEventListener("click", async () => {
-        setLoading(logoutButton, true, "Signing out...", "Log out");
+        logoutButton.disabled = true;
+        logoutButton.textContent = "Signing out...";
 
         try {
             await api("/api/auth/logout", { method: "POST" });
@@ -298,13 +273,13 @@ if (logoutButton) {
                 true
             );
         } finally {
-            setLoading(logoutButton, false, "Signing out...", "Log out");
+            logoutButton.disabled = false;
+            logoutButton.textContent = "Log out";
         }
     });
 }
 
-/* ---------- Dashboard navigation ---------- */
-
+/* Navigation with role checks. */
 document.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => {
         if (!currentUser) {
@@ -315,7 +290,11 @@ document.querySelectorAll("[data-view]").forEach((button) => {
         const viewId = button.dataset.view;
 
         if (viewId === "gpaView" && currentUser.role !== "Student") {
-            showMessage(globalMessage, "GPA records are available to student accounts.", true);
+            showMessage(
+                globalMessage,
+                "GPA records are available to student accounts.",
+                true
+            );
             return;
         }
 
@@ -323,7 +302,11 @@ document.querySelectorAll("[data-view]").forEach((button) => {
             viewId === "facultyView" &&
             !["Faculty", "Administrator"].includes(currentUser.role)
         ) {
-            showMessage(globalMessage, "Faculty tools require a faculty or administrator account.", true);
+            showMessage(
+                globalMessage,
+                "Faculty tools require a faculty or administrator account.",
+                true
+            );
             return;
         }
 
@@ -331,141 +314,141 @@ document.querySelectorAll("[data-view]").forEach((button) => {
     });
 });
 
-/* ---------- Attendance ---------- */
-
+/* Attendance records. */
 const attendanceButton = document.getElementById("loadAttendance");
 
-if (attendanceButton) {
-    attendanceButton.addEventListener("click", async () => {
-        const container = document.getElementById("attendanceResults");
+attendanceButton?.addEventListener("click", async () => {
+    const container = document.getElementById("attendanceResults");
 
-        if (!currentUser || !container) {
-            showMessage(globalMessage, "Please sign in first.", true);
-            return;
-        }
+    if (!currentUser || !container) {
+        showMessage(globalMessage, "Please sign in first.", true);
+        return;
+    }
 
-        if (currentUser.role !== "Student") {
-            container.textContent =
-                "Student attendance is shown here. Faculty management requires a faculty-specific API.";
-            return;
-        }
+    if (currentUser.role !== "Student") {
+        container.textContent =
+            "Student attendance is available here. Faculty management requires a faculty-specific API.";
+        return;
+    }
 
-        setLoading(attendanceButton, true, "Loading...", "Load attendance");
-        container.textContent = "Loading attendance records...";
+    attendanceButton.disabled = true;
+    attendanceButton.textContent = "Loading...";
+    container.textContent = "Loading attendance records...";
 
-        try {
-            const result = await api("/api/attendance/my");
-            const records = Array.isArray(result)
-                ? result
-                : result.attendance || result.records || [];
+    try {
+        const result = await api("/api/attendance/my");
 
-            renderTable(
-                container,
-                [
-                    { key: "attendance_date", label: "Date" },
-                    { key: "subject_id", label: "Subject ID" },
-                    { key: "status", label: "Status" }
-                ],
-                records
-            );
-        } catch (error) {
-            container.textContent =
-                error.message || "Unable to load attendance records.";
-        } finally {
-            setLoading(attendanceButton, false, "Loading...", "Load attendance");
-        }
-    });
-}
+        const records = Array.isArray(result)
+            ? result
+            : result.attendance || result.records || [];
 
-/* ---------- Semester GPA ---------- */
+        renderTable(
+            container,
+            [
+                { key: "attendance_date", label: "Date" },
+                { key: "subject_id", label: "Subject ID" },
+                { key: "status", label: "Status" }
+            ],
+            records
+        );
+    } catch (error) {
+        container.textContent =
+            error.message || "Unable to load attendance records.";
+    } finally {
+        attendanceButton.disabled = false;
+        attendanceButton.textContent = "Load attendance";
+    }
+});
 
+/* Semester GPA. */
 const gpaButton = document.getElementById("loadGpa");
 
-if (gpaButton) {
-    gpaButton.addEventListener("click", async () => {
-        const container = document.getElementById("gpaResults");
-        const semesterSelect = document.getElementById("semesterNumber");
+gpaButton?.addEventListener("click", async () => {
+    const container = document.getElementById("gpaResults");
+    const semesterSelect = document.getElementById("semesterNumber");
 
-        if (!currentUser || !container || !semesterSelect) {
-            showMessage(globalMessage, "Please sign in first.", true);
-            return;
-        }
+    if (!currentUser || !container || !semesterSelect) {
+        showMessage(globalMessage, "Please sign in first.", true);
+        return;
+    }
 
-        if (currentUser.role !== "Student") {
-            container.textContent = "GPA records are available to student accounts.";
-            return;
-        }
+    if (currentUser.role !== "Student") {
+        container.textContent = "GPA records are available to student accounts.";
+        return;
+    }
 
-        const semester = Number(semesterSelect.value);
+    const semesterValue = semesterSelect.value;
+    const semester = Number(semesterValue);
 
-        if (!semesterSelect.value || !Number.isInteger(semester) ||
-            semester < 1 || semester > 8) {
-            container.textContent = "Please choose a semester from 1 to 8.";
-            semesterSelect.focus();
-            return;
-        }
+    if (
+        !semesterValue ||
+        !Number.isInteger(semester) ||
+        semester < 1 ||
+        semester > 8
+    ) {
+        container.textContent = "Choose a semester from 1 to 8.";
+        semesterSelect.focus();
+        return;
+    }
 
-        if (!currentUser.student_id) {
-            container.textContent =
-                "No student profile is linked to this account. Please contact the administrator.";
-            return;
-        }
+    if (!currentUser.student_id) {
+        container.textContent =
+            "No student profile is linked to this account. Please contact the administrator.";
+        return;
+    }
 
-        setLoading(gpaButton, true, "Loading GPA...", "View GPA");
-        container.textContent = "Retrieving GPA records...";
+    gpaButton.disabled = true;
+    gpaButton.textContent = "Loading GPA...";
+    container.textContent = "Retrieving GPA records...";
 
-        try {
-            const result = await api(
-                `/api/students/${encodeURIComponent(currentUser.student_id)}` +
-                `/semesters/${semester}/gpa`
+    try {
+        const result = await api(
+            `/api/students/${encodeURIComponent(currentUser.student_id)}` +
+            `/semesters/${semester}/gpa`
+        );
+
+        container.replaceChildren();
+
+        const gpaValue =
+            result.gpa ?? result.semester_gpa ?? result.sgpa;
+
+        const summary = document.createElement("p");
+        summary.textContent =
+            gpaValue === null || gpaValue === undefined
+                ? "No GPA value was returned by the server."
+                : `Semester ${semester} GPA: ${gpaValue}`;
+
+        container.appendChild(summary);
+
+        const subjects =
+            result.subjects || result.subject_results || result.results || [];
+
+        if (Array.isArray(subjects) && subjects.length > 0) {
+            const tableContainer = document.createElement("div");
+
+            renderTable(
+                tableContainer,
+                [
+                    { key: "subject_name", label: "Subject" },
+                    { key: "credits", label: "Credits" },
+                    { key: "grade", label: "Grade" },
+                    { key: "grade_point", label: "Grade Point" }
+                ],
+                subjects
             );
 
-            container.replaceChildren();
-
-            const gpaValue =
-                result.gpa ?? result.semester_gpa ?? result.sgpa;
-
-            const summary = document.createElement("p");
-            summary.textContent =
-                gpaValue === null || gpaValue === undefined
-                    ? "The server did not return a GPA value."
-                    : `Semester ${semester} GPA: ${gpaValue}`;
-
-            container.appendChild(summary);
-
-            const subjects =
-                result.subjects || result.subject_results || result.results || [];
-
-            if (Array.isArray(subjects) && subjects.length > 0) {
-                const tableContainer = document.createElement("div");
-
-                renderTable(
-                    tableContainer,
-                    [
-                        { key: "subject_name", label: "Subject" },
-                        { key: "credits", label: "Credits" },
-                        { key: "grade", label: "Grade" },
-                        { key: "grade_point", label: "Grade Point" }
-                    ],
-                    subjects
-                );
-
-                container.appendChild(tableContainer);
-            }
-        } catch (error) {
-            container.textContent =
-                error.message || "Unable to retrieve semester GPA.";
-        } finally {
-            setLoading(gpaButton, false, "Loading GPA...", "View GPA");
+            container.appendChild(tableContainer);
         }
-    });
-}
+    } catch (error) {
+        container.textContent =
+            error.message || "Unable to retrieve semester GPA.";
+    } finally {
+        gpaButton.disabled = false;
+        gpaButton.textContent = "View GPA";
+    }
+});
 
-/* ---------- Faculty shortcuts ---------- */
-
-const facultyAttendanceButton = document.getElementById("facultyAttendance");
-const facultyMarksButton = document.getElementById("facultyMarks");
-
+/* Faculty shortcuts: informational only until faculty-specific endpoints exist. */
 function handleFacultyShortcut(action) {
     const container = document.getElementById("facultyResults");
 
@@ -480,31 +463,34 @@ function handleFacultyShortcut(action) {
         return;
     }
 
-    if (action === "attendance") {
-        container.textContent =
-            "Faculty attendance management requires a faculty-specific attendance API.";
-    } else {
-        container.textContent =
-            "Faculty marks management requires a faculty-specific marks API.";
-    }
+    container.textContent = action === "attendance"
+        ? "Faculty attendance management requires a faculty-specific attendance API."
+        : "Faculty marks management requires a faculty-specific marks API.";
 }
 
-facultyAttendanceButton?.addEventListener("click", () => {
-    handleFacultyShortcut("attendance");
-});
+document.getElementById("facultyAttendance")
+    ?.addEventListener("click", () => handleFacultyShortcut("attendance"));
 
-facultyMarksButton?.addEventListener("click", () => {
-    handleFacultyShortcut("marks");
-});
+document.getElementById("facultyMarks")
+    ?.addEventListener("click", () => handleFacultyShortcut("marks"));
 
-/* ---------- Restore existing session ---------- */
-
+/*
+ * Restore a session quietly.
+ * An unauthenticated response is normal on the login page, not a UI error.
+ */
 async function restoreSession() {
     try {
         const user = await api("/api/auth/me");
         openDashboard(user);
     } catch (_error) {
-        closeDashboard("Please sign in to access your academic records.");
+        currentUser = null;
+
+        dashboardPanel?.classList.add("hidden");
+        loginPanel?.classList.remove("hidden");
+        logoutButton?.classList.add("hidden");
+
+        clearMessage(loginMessage);
+        clearMessage(globalMessage);
     }
 }
 
