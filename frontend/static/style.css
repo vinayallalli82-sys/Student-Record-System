@@ -1,0 +1,154 @@
+
+:root {
+    font-family: "Segoe UI", Arial, sans-serif;
+    color: #1f2937;
+    background: #f3f6fb;
+    font-synthesis: none;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    line-height: 1.5;
+}
+
+.topbar {
+    background: #163a70;
+    color: white;
+    padding: 20px max(5%, calc((100% - 1050px) / 2));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.topbar h1 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.topbar p {
+    margin: 4px 0 0;
+    color: #e0eaff;
+}
+
+.container {
+    max-width: 1050px;
+    margin: 32px auto;
+    padding: 0 20px;
+}
+
+.card {
+    background: white;
+    padding: 24px;
+    margin-bottom: 20px;
+    border: 1px solid #dce3ed;
+    border-radius: 12px;
+    box-shadow: 0 4px 14px #14294a0a;
+}
+
+.login-card {
+    max-width: 480px;
+    margin: 40px auto;
+}
+
+h2 {
+    margin-top: 0;
+}
+
+label {
+    display: block;
+    font-weight: 600;
+    margin: 16px 0 6px;
+}
+
+input, select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #9aa9bd;
+    border-radius: 7px;
+    background: white;
+    font: inherit;
+}
+
+button {
+    border: 0;
+    border-radius: 7px;
+    background: #1c5db5;
+    color: white;
+    padding: 11px 16px;
+    margin: 10px 8px 4px 0;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #16498e;
+}
+
+button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 3px solid #f2b84b;
+    outline-offset: 2px;
+}
+
+button.secondary {
+    background: #e5edf8;
+    color: #17365f;
+}
+
+.navigation {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 20px 0;
+}
+
+.navigation button {
+    margin: 0;
+}
+
+.results {
+    margin-top: 16px;
+    overflow-wrap: anywhere;
+}
+
+.results table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+}
+
+.results th, .results td {
+    text-align: left;
+    border-bottom: 1px solid #e0e6ef;
+    padding: 10px;
+}
+
+.message {
+    min-height: 24px;
+    color: #a12b2b;
+}
+
+.hidden {
+    display: none !important;
+}
+
+@media (max-width: 600px) {
+    .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .container {
+        margin-top: 18px;
+        padding: 0 12px;
+    }
+
+    .card {
+        padding: 17px;
+    }
+}

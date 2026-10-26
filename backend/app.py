@@ -1,5 +1,5 @@
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template
 from flask_login import LoginManager
 from flask_wtf.csrf import CSRFError, CSRFProtect
 from sqlalchemy import text
@@ -19,7 +19,11 @@ csrf = CSRFProtect()
 
 
 def create_app():
-    app = Flask(__name__)
+    app = Flask(
+        __name__,
+        template_folder="../frontend/templates",
+        static_folder="../frontend/static",
+    )
     app.config.from_object(Config)
 
     db.init_app(app)
@@ -46,18 +50,17 @@ def create_app():
             "message": error.description,
         }), 400
 
+    # Preserve all existing feature routes.
     app.register_blueprint(marks_bp)
     app.register_blueprint(subjects_bp)
     app.register_blueprint(attendance_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(gpa_bp)
 
+    # NFR-003: Serve the usability dashboard.
     @app.route("/")
     def home():
-        return jsonify({
-            "message": "Student Record System API is running!",
-            "status": "success",
-        })
+        return render_template("dashboard.html")
 
     @app.route("/api/health")
     def health():
