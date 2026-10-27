@@ -1,3 +1,4 @@
+
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required, login_user, logout_user
 from flask_wtf.csrf import generate_csrf
@@ -6,8 +7,29 @@ from werkzeug.security import check_password_hash
 
 from backend.extensions import db
 from backend.models.user import User
+from backend.models.student import Student
+
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
+
+
+def user_to_dict(user):
+    """Return the authenticated user's information for the dashboard."""
+    result = {
+        "user_id": user.user_id,
+        "email": user.email,
+        "role": user.role,
+    }
+
+    if user.role == "Student":
+        student = db.session.scalar(
+            select(Student).where(Student.user_id == user.user_id)
+        )
+        result["student_id"] = (
+            student.student_id if student is not None else None
+        )
+
+    return result
 
 
 @auth_bp.get("/csrf")
@@ -42,13 +64,10 @@ def login():
         return jsonify({"error": "Invalid email or password."}), 401
 
     login_user(user)
+
     return jsonify({
         "message": "Login successful.",
-        "user": {
-            "user_id": user.user_id,
-            "email": user.email,
-            "role": user.role,
-        },
+        "user": user_to_dict(user),
     }), 200
 
 
@@ -62,8 +81,4 @@ def logout():
 @auth_bp.get("/me")
 @login_required
 def me():
-    return jsonify({
-        "user_id": current_user.user_id,
-        "email": current_user.email,
-        "role": current_user.role,
-    }), 200
+    return jsonify(user_to_dict(current_user)), 200
