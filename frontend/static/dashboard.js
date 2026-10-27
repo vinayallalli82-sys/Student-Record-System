@@ -16,7 +16,6 @@ const logoutButton = document.getElementById("logoutButton");
 
 let currentUser = null;
 
-/* Display an accessible status or error message. */
 function showMessage(element, message, isError = false) {
     if (!element) return;
 
@@ -34,10 +33,9 @@ function clearMessage(element) {
     element.classList.remove("error-message", "success-message");
 }
 
-/* Use the existing backend API with session cookies and CSRF protection. */
+/* Use the backend API with session cookies and CSRF protection. */
 async function api(url, options = {}) {
     const method = (options.method || "GET").toUpperCase();
-
     const headers = {
         Accept: "application/json",
         ...(options.body ? { "Content-Type": "application/json" } : {}),
@@ -100,9 +98,7 @@ function showView(viewId) {
 
     clearMessage(globalMessage);
 
-    const heading = document
-        .getElementById(viewId)
-        ?.querySelector("h2");
+    const heading = document.getElementById(viewId)?.querySelector("h2");
 
     if (heading) {
         heading.setAttribute("tabindex", "-1");
@@ -110,7 +106,7 @@ function showView(viewId) {
     }
 }
 
-/* Safely display records without inserting HTML from API responses. */
+/* Render tables using text nodes, not untrusted HTML. */
 function renderTable(container, columns, records) {
     if (!container) return;
 
@@ -159,18 +155,15 @@ function renderTable(container, columns, records) {
     container.appendChild(table);
 }
 
-/* Format numeric values consistently for display. */
 function formatNumber(value, decimalPlaces = 2) {
-    const number = Number(value);
-
-    if (!Number.isFinite(number)) {
+    if (value === null || value === undefined || value === "") {
         return "—";
     }
 
-    return number.toFixed(decimalPlaces);
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toFixed(decimalPlaces) : "—";
 }
 
-/* Create a labelled summary row using safe DOM methods. */
 function appendSummaryRow(container, label, value) {
     const row = document.createElement("p");
     const strong = document.createElement("strong");
@@ -181,10 +174,7 @@ function appendSummaryRow(container, label, value) {
     container.appendChild(row);
 }
 
-/*
- * FR-005: Render the academic records returned by the backend.
- * Displays each subject, its credits, assessments, grades, and attendance.
- */
+/* FR-005: Render semester-wise academic records. */
 function renderAcademicRecords(container, subjects) {
     container.replaceChildren();
 
@@ -206,11 +196,7 @@ function renderAcademicRecords(container, subjects) {
             `${subject.subject_name || "Unnamed subject"}`;
         card.appendChild(heading);
 
-        appendSummaryRow(
-            card,
-            "Credits",
-            formatNumber(subject.credits, 1)
-        );
+        appendSummaryRow(card, "Credits", formatNumber(subject.credits, 1));
 
         const assessments = Array.isArray(subject.assessments)
             ? subject.assessments
@@ -226,36 +212,16 @@ function renderAcademicRecords(container, subjects) {
             renderTable(
                 tableContainer,
                 [
-                    {
-                        key: "assessment_name",
-                        label: "Assessment"
-                    },
-                    {
-                        key: "marks_obtained",
-                        label: "Marks Obtained"
-                    },
-                    {
-                        key: "max_marks",
-                        label: "Maximum Marks"
-                    },
-                    {
-                        key: "percentage",
-                        label: "Percentage (%)"
-                    },
-                    {
-                        key: "grade",
-                        label: "Grade"
-                    },
-                    {
-                        key: "grade_point",
-                        label: "Grade Point"
-                    }
+                    { key: "assessment_name", label: "Assessment" },
+                    { key: "marks_obtained", label: "Marks Obtained" },
+                    { key: "max_marks", label: "Maximum Marks" },
+                    { key: "percentage", label: "Percentage (%)" },
+                    { key: "grade", label: "Grade" },
+                    { key: "grade_point", label: "Grade Point" }
                 ],
                 assessments.map((assessment) => ({
                     ...assessment,
-                    marks_obtained: formatNumber(
-                        assessment.marks_obtained
-                    ),
+                    marks_obtained: formatNumber(assessment.marks_obtained),
                     max_marks: formatNumber(assessment.max_marks),
                     percentage: formatNumber(assessment.percentage),
                     grade_point: formatNumber(assessment.grade_point)
@@ -274,6 +240,10 @@ function renderAcademicRecords(container, subjects) {
         const totalMaximum = Number(subject.total_max_marks);
 
         if (
+            subject.total_marks_obtained !== null &&
+            subject.total_marks_obtained !== undefined &&
+            subject.total_max_marks !== null &&
+            subject.total_max_marks !== undefined &&
             Number.isFinite(totalObtained) &&
             Number.isFinite(totalMaximum)
         ) {
@@ -295,7 +265,6 @@ function renderAcademicRecords(container, subjects) {
 
         appendSummaryRow(card, "Total classes", totalClasses);
         appendSummaryRow(card, "Classes attended", classesAttended);
-
         appendSummaryRow(
             card,
             "Attendance percentage",
@@ -344,14 +313,12 @@ function openDashboard(user) {
     showView("attendanceView");
 }
 
-/* Return to a clean login screen without showing an error by default. */
 function closeDashboard(message = "") {
     currentUser = null;
 
     dashboardPanel?.classList.add("hidden");
     loginPanel?.classList.remove("hidden");
     logoutButton?.classList.add("hidden");
-
     loginForm?.reset();
 
     clearMessage(globalMessage);
@@ -363,10 +330,7 @@ function closeDashboard(message = "") {
         "facultyResults"
     ].forEach((id) => {
         const container = document.getElementById(id);
-
-        if (container) {
-            container.replaceChildren();
-        }
+        if (container) container.replaceChildren();
     });
 
     clearMessage(document.getElementById("academicRecordsMessage"));
@@ -378,19 +342,14 @@ function closeDashboard(message = "") {
     }
 }
 
-/* Login form. */
+/* Login */
 if (loginForm) {
     loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
-        const email =
-            document.getElementById("email")?.value.trim() || "";
-        const password =
-            document.getElementById("password")?.value || "";
-
-        const submitButton = loginForm.querySelector(
-            'button[type="submit"]'
-        );
+        const email = document.getElementById("email")?.value.trim() || "";
+        const password = document.getElementById("password")?.value || "";
+        const submitButton = loginForm.querySelector('button[type="submit"]');
 
         if (!email || !password) {
             showMessage(
@@ -434,7 +393,7 @@ if (loginForm) {
     });
 }
 
-/* Logout. */
+/* Logout */
 if (logoutButton) {
     logoutButton.addEventListener("click", async () => {
         logoutButton.disabled = true;
@@ -456,7 +415,7 @@ if (logoutButton) {
     });
 }
 
-/* Navigation with role checks. */
+/* Navigation with role checks */
 document.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => {
         if (!currentUser) {
@@ -467,24 +426,12 @@ document.querySelectorAll("[data-view]").forEach((button) => {
         const viewId = button.dataset.view;
 
         if (
-            viewId === "gpaView" &&
+            ["gpaView", "academicRecordsView"].includes(viewId) &&
             currentUser.role !== "Student"
         ) {
             showMessage(
                 globalMessage,
-                "GPA records are available to student accounts.",
-                true
-            );
-            return;
-        }
-
-        if (
-            viewId === "academicRecordsView" &&
-            currentUser.role !== "Student"
-        ) {
-            showMessage(
-                globalMessage,
-                "Academic records are available to student accounts.",
+                "These academic features are available to student accounts.",
                 true
             );
             return;
@@ -506,7 +453,7 @@ document.querySelectorAll("[data-view]").forEach((button) => {
     });
 });
 
-/* Attendance records. */
+/* Attendance records */
 const attendanceButton = document.getElementById("loadAttendance");
 
 attendanceButton?.addEventListener("click", async () => {
@@ -529,7 +476,6 @@ attendanceButton?.addEventListener("click", async () => {
 
     try {
         const result = await api("/api/attendance/my");
-
         const records = Array.isArray(result)
             ? result
             : result.attendance || result.records || [];
@@ -552,7 +498,7 @@ attendanceButton?.addEventListener("click", async () => {
     }
 });
 
-/* Semester GPA. */
+/* Semester GPA */
 const gpaButton = document.getElementById("loadGpa");
 
 gpaButton?.addEventListener("click", async () => {
@@ -565,20 +511,14 @@ gpaButton?.addEventListener("click", async () => {
     }
 
     if (currentUser.role !== "Student") {
-        container.textContent =
-            "GPA records are available to student accounts.";
+        container.textContent = "GPA records are available to student accounts.";
         return;
     }
 
     const semesterValue = semesterSelect.value;
     const semester = Number(semesterValue);
 
-    if (
-        !semesterValue ||
-        !Number.isInteger(semester) ||
-        semester < 1 ||
-        semester > 8
-    ) {
+    if (!semesterValue || !Number.isInteger(semester) || semester < 1 || semester > 8) {
         container.textContent = "Choose a semester from 1 to 8.";
         semesterSelect.focus();
         return;
@@ -602,9 +542,7 @@ gpaButton?.addEventListener("click", async () => {
 
         container.replaceChildren();
 
-        const gpaValue =
-            result.gpa ?? result.semester_gpa ?? result.sgpa;
-
+        const gpaValue = result.gpa ?? result.semester_gpa ?? result.sgpa;
         const summary = document.createElement("p");
         summary.textContent =
             gpaValue === null || gpaValue === undefined
@@ -614,14 +552,10 @@ gpaButton?.addEventListener("click", async () => {
         container.appendChild(summary);
 
         const subjects =
-            result.subjects ||
-            result.subject_results ||
-            result.results ||
-            [];
+            result.subjects || result.subject_results || result.results || [];
 
         if (Array.isArray(subjects) && subjects.length > 0) {
             const tableContainer = document.createElement("div");
-
             renderTable(
                 tableContainer,
                 [
@@ -632,7 +566,6 @@ gpaButton?.addEventListener("click", async () => {
                 ],
                 subjects
             );
-
             container.appendChild(tableContainer);
         }
     } catch (error) {
@@ -644,19 +577,13 @@ gpaButton?.addEventListener("click", async () => {
     }
 });
 
-/* FR-005: Academic Records. */
-const academicRecordsButton =
-    document.getElementById("loadAcademicRecords");
+/* FR-005: Academic Records */
+const academicRecordsButton = document.getElementById("loadAcademicRecords");
 
 academicRecordsButton?.addEventListener("click", async () => {
-    const container =
-        document.getElementById("academicRecordsResults");
-
-    const messageElement =
-        document.getElementById("academicRecordsMessage");
-
-    const semesterSelect =
-        document.getElementById("academicSemesterNumber");
+    const container = document.getElementById("academicRecordsResults");
+    const messageElement = document.getElementById("academicRecordsMessage");
+    const semesterSelect = document.getElementById("academicSemesterNumber");
 
     if (!currentUser || !container || !semesterSelect) {
         showMessage(globalMessage, "Please sign in first.", true);
@@ -675,17 +602,8 @@ academicRecordsButton?.addEventListener("click", async () => {
     const semesterValue = semesterSelect.value;
     const semester = Number(semesterValue);
 
-    if (
-        !semesterValue ||
-        !Number.isInteger(semester) ||
-        semester < 1 ||
-        semester > 8
-    ) {
-        showMessage(
-            messageElement,
-            "Choose a semester from 1 to 8.",
-            true
-        );
+    if (!semesterValue || !Number.isInteger(semester) || semester < 1 || semester > 8) {
+        showMessage(messageElement, "Choose a semester from 1 to 8.", true);
         semesterSelect.focus();
         return;
     }
@@ -696,10 +614,6 @@ academicRecordsButton?.addEventListener("click", async () => {
     clearMessage(messageElement);
 
     try {
-        /*
-         * The backend identifies the student from the authenticated
-         * session. The frontend does not send a student ID.
-         */
         const result = await api(
             `/api/academic-records/my?semester=${semester}`
         );
@@ -726,12 +640,7 @@ academicRecordsButton?.addEventListener("click", async () => {
             );
 
             const academicYear = result.academic_year;
-
-            if (
-                academicYear !== null &&
-                academicYear !== undefined &&
-                academicYear !== ""
-            ) {
+            if (academicYear !== null && academicYear !== undefined && academicYear !== "") {
                 const yearInfo = document.createElement("p");
                 yearInfo.textContent = `Academic year: ${academicYear}`;
                 container.prepend(yearInfo);
@@ -739,7 +648,6 @@ academicRecordsButton?.addEventListener("click", async () => {
         }
     } catch (error) {
         container.replaceChildren();
-
         showMessage(
             messageElement,
             error.message || "Unable to load academic records.",
@@ -751,16 +659,12 @@ academicRecordsButton?.addEventListener("click", async () => {
     }
 });
 
-/* Faculty shortcuts: informational only until faculty-specific endpoints exist. */
+/* Faculty shortcuts: informational until faculty-specific endpoints exist. */
 function handleFacultyShortcut(action) {
     const container = document.getElementById("facultyResults");
-
     if (!container) return;
 
-    if (
-        !currentUser ||
-        !["Faculty", "Administrator"].includes(currentUser.role)
-    ) {
+    if (!currentUser || !["Faculty", "Administrator"].includes(currentUser.role)) {
         container.textContent =
             "Please sign in with a faculty or administrator account.";
         return;
@@ -777,21 +681,16 @@ document.getElementById("facultyAttendance")
 document.getElementById("facultyMarks")
     ?.addEventListener("click", () => handleFacultyShortcut("marks"));
 
-/*
- * Restore a session quietly.
- * An unauthenticated response is normal on the login page, not a UI error.
- */
+/* Restore an existing session quietly. */
 async function restoreSession() {
     try {
         const user = await api("/api/auth/me");
         openDashboard(user);
     } catch (_error) {
         currentUser = null;
-
         dashboardPanel?.classList.add("hidden");
         loginPanel?.classList.remove("hidden");
         logoutButton?.classList.add("hidden");
-
         clearMessage(loginMessage);
         clearMessage(globalMessage);
     }

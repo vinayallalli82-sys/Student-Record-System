@@ -24,6 +24,25 @@ auth_bp = Blueprint(
 )
 
 
+def user_to_dict(user):
+    """Return the authenticated user's information for the dashboard."""
+    result = {
+        "user_id": user.user_id,
+        "email": user.email,
+        "role": user.role,
+    }
+
+    if user.role == "Student":
+        student = db.session.scalar(
+            select(Student).where(Student.user_id == user.user_id)
+        )
+        result["student_id"] = (
+            student.student_id if student is not None else None
+        )
+
+    return result
+
+
 @auth_bp.get("/csrf")
 def csrf_token():
     """Generate a CSRF token for protected requests."""
@@ -72,24 +91,9 @@ def login():
 
     login_user(user)
 
-    # Resolve the linked student profile for student accounts.
-    student = None
-
-    if user.role == "Student":
-        student = Student.query.filter_by(
-            user_id=user.user_id
-        ).first()
-
     return jsonify({
         "message": "Login successful.",
-        "user": {
-            "user_id": user.user_id,
-            "email": user.email,
-            "role": user.role,
-            "student_id": (
-                student.student_id if student else None
-            ),
-        },
+        "user": user_to_dict(user),
     }), 200
 
 
@@ -108,18 +112,4 @@ def logout():
 @login_required
 def me():
     """Return the current user's session information."""
-    student = None
-
-    if current_user.role == "Student":
-        student = Student.query.filter_by(
-            user_id=current_user.user_id
-        ).first()
-
-    return jsonify({
-        "user_id": current_user.user_id,
-        "email": current_user.email,
-        "role": current_user.role,
-        "student_id": (
-            student.student_id if student else None
-        ),
-    }), 200
+    return jsonify(user_to_dict(current_user)), 200

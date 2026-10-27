@@ -1,8 +1,5 @@
 
-/* ==========================================
-   Student Record System
-   Modern responsive dashboard design
-   ========================================== */
+/* Student Record System - responsive dashboard */
 
 :root {
     --primary: #4f46e5;
@@ -18,6 +15,11 @@
     --danger: #dc2626;
     --radius: 16px;
     --shadow: 0 8px 30px rgba(31, 41, 75, 0.07);
+
+    font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+    color: var(--text);
+    background: var(--background);
+    font-synthesis: none;
 }
 
 * {
@@ -32,10 +34,8 @@ html {
 body {
     margin: 0;
     min-height: 100vh;
-    font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
     font-size: 15px;
     line-height: 1.6;
-    color: var(--text);
     background:
         radial-gradient(ellipse at top left, #e0e7ff 0, transparent 36%),
         var(--background);
@@ -43,7 +43,8 @@ body {
 
 /* Header */
 
-.app-header {
+.app-header,
+.topbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -54,14 +55,16 @@ body {
     box-shadow: 0 5px 22px rgba(49, 46, 129, 0.18);
 }
 
-.app-header h1 {
+.app-header h1,
+.topbar h1 {
     margin: 0;
     font-size: clamp(23px, 3vw, 30px);
     font-weight: 750;
     letter-spacing: -0.8px;
 }
 
-.app-header p {
+.app-header p,
+.topbar p {
     margin: 5px 0 0;
     color: #e0e7ff;
     font-size: 14px;
@@ -72,10 +75,6 @@ body {
 .container {
     width: min(1120px, 92%);
     margin: 38px auto 64px;
-}
-
-.hidden {
-    display: none !important;
 }
 
 .card {
@@ -125,7 +124,7 @@ body {
     }
 }
 
-/* Login panel */
+/* Login */
 
 #loginPanel {
     width: min(540px, 100%);
@@ -164,9 +163,7 @@ textarea {
     border-radius: 10px;
     font: inherit;
     outline: none;
-    transition:
-        border-color 0.2s,
-        box-shadow 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 input:focus,
@@ -203,10 +200,7 @@ button {
     font-size: 14px;
     font-weight: 650;
     cursor: pointer;
-    transition:
-        background 0.2s,
-        transform 0.2s,
-        box-shadow 0.2s;
+    transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
 }
 
 button:hover:not(:disabled) {
@@ -215,7 +209,10 @@ button:hover:not(:disabled) {
     transform: translateY(-1px);
 }
 
-button:focus-visible {
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
     outline: 3px solid rgba(6, 182, 212, 0.55);
     outline-offset: 3px;
 }
@@ -236,9 +233,10 @@ button.secondary:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.15);
 }
 
-/* Dashboard navigation */
+/* Navigation */
 
-.dashboard-nav {
+.dashboard-nav,
+.navigation {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
@@ -250,15 +248,19 @@ button.secondary:hover:not(:disabled) {
     box-shadow: 0 4px 16px rgba(31, 41, 75, 0.04);
 }
 
-.dashboard-nav button {
+.dashboard-nav button,
+.navigation button {
     flex: 1 1 145px;
+    margin: 0;
     color: #475569;
     background: transparent;
     border-color: transparent;
 }
 
 .dashboard-nav button:hover:not(:disabled),
-.dashboard-nav button[aria-current="page"] {
+.dashboard-nav button[aria-current="page"],
+.navigation button:hover:not(:disabled),
+.navigation button[aria-current="page"] {
     color: var(--primary-dark);
     background: var(--primary-light);
     box-shadow: none;
@@ -266,6 +268,11 @@ button.secondary:hover:not(:disabled) {
 }
 
 /* Messages */
+
+.message {
+    min-height: 24px;
+    overflow-wrap: anywhere;
+}
 
 #globalMessage,
 #loginMessage,
@@ -289,7 +296,13 @@ button.secondary:hover:not(:disabled) {
     border-radius: 9px;
 }
 
-/* Results and academic subject cards */
+/* Results and academic records */
+
+.results {
+    margin-top: 16px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
 
 #attendanceResults,
 #gpaResults,
@@ -297,6 +310,7 @@ button.secondary:hover:not(:disabled) {
 #facultyResults {
     margin-top: 22px;
     min-width: 0;
+    overflow-x: auto;
 }
 
 .academic-subject {
@@ -315,6 +329,7 @@ button.secondary:hover:not(:disabled) {
 
 /* Tables */
 
+.results table,
 #attendanceResults table,
 #gpaResults table,
 #academicRecordsResults table,
@@ -327,13 +342,6 @@ button.secondary:hover:not(:disabled) {
     background: white;
     border: 1px solid var(--border);
     border-radius: 10px;
-}
-
-#attendanceResults,
-#gpaResults,
-#academicRecordsResults,
-#facultyResults {
-    overflow-x: auto;
 }
 
 table th,
@@ -372,6 +380,12 @@ table tbody tr:hover {
     margin: 8px 8px 0 0;
 }
 
+/* Visibility */
+
+.hidden {
+    display: none !important;
+}
+
 /* Responsive layout */
 
 @media (min-width: 900px) {
@@ -381,34 +395,40 @@ table tbody tr:hover {
 }
 
 @media (max-width: 640px) {
-    .app-header {
+    .app-header,
+    .topbar {
         align-items: flex-start;
+        flex-direction: column;
         padding: 22px 5%;
     }
 
-    .app-header h1 {
+    .app-header h1,
+    .topbar h1 {
         font-size: 22px;
     }
 
-    .app-header p {
+    .app-header p,
+    .topbar p {
         font-size: 13px;
     }
 
     .container {
         width: 94%;
-        margin-top: 22px;
+        margin-top: 18px;
     }
 
     #loginPanel {
         margin-top: 24px;
     }
 
-    .dashboard-nav {
+    .dashboard-nav,
+    .navigation {
         gap: 7px;
         padding: 8px;
     }
 
-    .dashboard-nav button {
+    .dashboard-nav button,
+    .navigation button {
         flex: 1 1 42%;
         padding: 10px;
     }
