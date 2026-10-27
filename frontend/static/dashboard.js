@@ -3,8 +3,8 @@
 
 /*
  * NFR-003: Usability improvements for the Student Record System.
- * Uses the element IDs defined in dashboard.html.
- * Keeps all attendance, GPA, and authentication logic in the backend.
+ * FR-005: View semester-wise academic records.
+ * Preserves authentication, attendance, GPA, and faculty functionality.
  */
 
 const loginPanel = document.getElementById("loginPanel");
@@ -16,7 +16,6 @@ const logoutButton = document.getElementById("logoutButton");
 
 let currentUser = null;
 
-/* Display an accessible status or error message. */
 function showMessage(element, message, isError = false) {
     if (!element) return;
 
@@ -29,11 +28,12 @@ function showMessage(element, message, isError = false) {
 
 function clearMessage(element) {
     if (!element) return;
+
     element.textContent = "";
     element.classList.remove("error-message", "success-message");
 }
 
-/* Use the existing backend API with session cookies and CSRF protection. */
+/* Use the backend API with session cookies and CSRF protection. */
 async function api(url, options = {}) {
     const method = (options.method || "GET").toUpperCase();
     const headers = {
@@ -81,7 +81,14 @@ async function api(url, options = {}) {
 
 /* Display one dashboard section at a time. */
 function showView(viewId) {
-    ["attendanceView", "gpaView", "facultyView"].forEach((id) => {
+    const viewIds = [
+        "attendanceView",
+        "gpaView",
+        "academicRecordsView",
+        "facultyView"
+    ];
+
+    viewIds.forEach((id) => {
         const section = document.getElementById(id);
 
         if (section) {
@@ -91,9 +98,7 @@ function showView(viewId) {
 
     clearMessage(globalMessage);
 
-    const heading = document
-        .getElementById(viewId)
-        ?.querySelector("h2");
+    const heading = document.getElementById(viewId)?.querySelector("h2");
 
     if (heading) {
         heading.setAttribute("tabindex", "-1");
@@ -101,7 +106,7 @@ function showView(viewId) {
     }
 }
 
-/* Safely display records without inserting HTML from API responses. */
+/* Render tables using text nodes, not untrusted HTML. */
 function renderTable(container, columns, records) {
     if (!container) return;
 
@@ -150,6 +155,126 @@ function renderTable(container, columns, records) {
     container.appendChild(table);
 }
 
+function formatNumber(value, decimalPlaces = 2) {
+    if (value === null || value === undefined || value === "") {
+        return "—";
+    }
+
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toFixed(decimalPlaces) : "—";
+}
+
+function appendSummaryRow(container, label, value) {
+    const row = document.createElement("p");
+    const strong = document.createElement("strong");
+
+    strong.textContent = `${label}: `;
+    row.appendChild(strong);
+    row.appendChild(document.createTextNode(String(value)));
+    container.appendChild(row);
+}
+
+/* FR-005: Render semester-wise academic records. */
+function renderAcademicRecords(container, subjects) {
+    container.replaceChildren();
+
+    if (!Array.isArray(subjects) || subjects.length === 0) {
+        const emptyMessage = document.createElement("p");
+        emptyMessage.textContent =
+            "No subjects or academic records are available for this semester.";
+        container.appendChild(emptyMessage);
+        return;
+    }
+
+    subjects.forEach((subject) => {
+        const card = document.createElement("article");
+        card.className = "academic-subject";
+
+        const heading = document.createElement("h3");
+        heading.textContent =
+            `${subject.subject_code || "Subject"} — ` +
+            `${subject.subject_name || "Unnamed subject"}`;
+        card.appendChild(heading);
+
+        appendSummaryRow(card, "Credits", formatNumber(subject.credits, 1));
+
+        const assessments = Array.isArray(subject.assessments)
+            ? subject.assessments
+            : [];
+
+        const assessmentHeading = document.createElement("h4");
+        assessmentHeading.textContent = "Assessment marks";
+        card.appendChild(assessmentHeading);
+
+        if (assessments.length > 0) {
+            const tableContainer = document.createElement("div");
+
+            renderTable(
+                tableContainer,
+                [
+                    { key: "assessment_name", label: "Assessment" },
+                    { key: "marks_obtained", label: "Marks Obtained" },
+                    { key: "max_marks", label: "Maximum Marks" },
+                    { key: "percentage", label: "Percentage (%)" },
+                    { key: "grade", label: "Grade" },
+                    { key: "grade_point", label: "Grade Point" }
+                ],
+                assessments.map((assessment) => ({
+                    ...assessment,
+                    marks_obtained: formatNumber(assessment.marks_obtained),
+                    max_marks: formatNumber(assessment.max_marks),
+                    percentage: formatNumber(assessment.percentage),
+                    grade_point: formatNumber(assessment.grade_point)
+                }))
+            );
+
+            card.appendChild(tableContainer);
+        } else {
+            const noAssessments = document.createElement("p");
+            noAssessments.textContent =
+                "No assessment marks have been recorded for this subject.";
+            card.appendChild(noAssessments);
+        }
+
+        const totalObtained = Number(subject.total_marks_obtained);
+        const totalMaximum = Number(subject.total_max_marks);
+
+        if (
+            subject.total_marks_obtained !== null &&
+            subject.total_marks_obtained !== undefined &&
+            subject.total_max_marks !== null &&
+            subject.total_max_marks !== undefined &&
+            Number.isFinite(totalObtained) &&
+            Number.isFinite(totalMaximum)
+        ) {
+            appendSummaryRow(
+                card,
+                "Total marks",
+                `${formatNumber(totalObtained)} / ${formatNumber(totalMaximum)}`
+            );
+        }
+
+        const attendance = subject.attendance || {};
+        const totalClasses = Number(attendance.total_classes || 0);
+        const classesAttended = Number(attendance.classes_attended || 0);
+        const attendancePercentage = Number(attendance.percentage || 0);
+
+        const attendanceHeading = document.createElement("h4");
+        attendanceHeading.textContent = "Attendance";
+        card.appendChild(attendanceHeading);
+
+        appendSummaryRow(card, "Total classes", totalClasses);
+        appendSummaryRow(card, "Classes attended", classesAttended);
+        appendSummaryRow(
+            card,
+            "Attendance percentage",
+            `${formatNumber(attendancePercentage)}%`
+        );
+
+        container.appendChild(card);
+    });
+}
+
 /* Open the correct dashboard for the authenticated user. */
 function openDashboard(user) {
     currentUser = user;
@@ -177,6 +302,9 @@ function openDashboard(user) {
     document.getElementById("gpaNav")
         ?.classList.toggle("hidden", !isStudent);
 
+    document.getElementById("academicRecordsNav")
+        ?.classList.toggle("hidden", !isStudent);
+
     document.getElementById("facultyNav")
         ?.classList.toggle("hidden", !isFaculty);
 
@@ -185,17 +313,27 @@ function openDashboard(user) {
     showView("attendanceView");
 }
 
-/* Return to a clean login screen without showing an error by default. */
 function closeDashboard(message = "") {
     currentUser = null;
 
     dashboardPanel?.classList.add("hidden");
     loginPanel?.classList.remove("hidden");
     logoutButton?.classList.add("hidden");
-
     loginForm?.reset();
 
     clearMessage(globalMessage);
+
+    [
+        "attendanceResults",
+        "gpaResults",
+        "academicRecordsResults",
+        "facultyResults"
+    ].forEach((id) => {
+        const container = document.getElementById(id);
+        if (container) container.replaceChildren();
+    });
+
+    clearMessage(document.getElementById("academicRecordsMessage"));
 
     if (message) {
         showMessage(loginMessage, message);
@@ -204,16 +342,14 @@ function closeDashboard(message = "") {
     }
 }
 
-/* Login form. */
+/* Login */
 if (loginForm) {
     loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
         const email = document.getElementById("email")?.value.trim() || "";
         const password = document.getElementById("password")?.value || "";
-        const submitButton = loginForm.querySelector(
-            'button[type="submit"]'
-        );
+        const submitButton = loginForm.querySelector('button[type="submit"]');
 
         if (!email || !password) {
             showMessage(
@@ -257,7 +393,7 @@ if (loginForm) {
     });
 }
 
-/* Logout. */
+/* Logout */
 if (logoutButton) {
     logoutButton.addEventListener("click", async () => {
         logoutButton.disabled = true;
@@ -279,7 +415,7 @@ if (logoutButton) {
     });
 }
 
-/* Navigation with role checks. */
+/* Navigation with role checks */
 document.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => {
         if (!currentUser) {
@@ -289,10 +425,13 @@ document.querySelectorAll("[data-view]").forEach((button) => {
 
         const viewId = button.dataset.view;
 
-        if (viewId === "gpaView" && currentUser.role !== "Student") {
+        if (
+            ["gpaView", "academicRecordsView"].includes(viewId) &&
+            currentUser.role !== "Student"
+        ) {
             showMessage(
                 globalMessage,
-                "GPA records are available to student accounts.",
+                "These academic features are available to student accounts.",
                 true
             );
             return;
@@ -314,7 +453,7 @@ document.querySelectorAll("[data-view]").forEach((button) => {
     });
 });
 
-/* Attendance records. */
+/* Attendance records */
 const attendanceButton = document.getElementById("loadAttendance");
 
 attendanceButton?.addEventListener("click", async () => {
@@ -337,7 +476,6 @@ attendanceButton?.addEventListener("click", async () => {
 
     try {
         const result = await api("/api/attendance/my");
-
         const records = Array.isArray(result)
             ? result
             : result.attendance || result.records || [];
@@ -360,7 +498,7 @@ attendanceButton?.addEventListener("click", async () => {
     }
 });
 
-/* Semester GPA. */
+/* Semester GPA */
 const gpaButton = document.getElementById("loadGpa");
 
 gpaButton?.addEventListener("click", async () => {
@@ -380,12 +518,7 @@ gpaButton?.addEventListener("click", async () => {
     const semesterValue = semesterSelect.value;
     const semester = Number(semesterValue);
 
-    if (
-        !semesterValue ||
-        !Number.isInteger(semester) ||
-        semester < 1 ||
-        semester > 8
-    ) {
+    if (!semesterValue || !Number.isInteger(semester) || semester < 1 || semester > 8) {
         container.textContent = "Choose a semester from 1 to 8.";
         semesterSelect.focus();
         return;
@@ -409,9 +542,7 @@ gpaButton?.addEventListener("click", async () => {
 
         container.replaceChildren();
 
-        const gpaValue =
-            result.gpa ?? result.semester_gpa ?? result.sgpa;
-
+        const gpaValue = result.gpa ?? result.semester_gpa ?? result.sgpa;
         const summary = document.createElement("p");
         summary.textContent =
             gpaValue === null || gpaValue === undefined
@@ -425,7 +556,6 @@ gpaButton?.addEventListener("click", async () => {
 
         if (Array.isArray(subjects) && subjects.length > 0) {
             const tableContainer = document.createElement("div");
-
             renderTable(
                 tableContainer,
                 [
@@ -436,7 +566,6 @@ gpaButton?.addEventListener("click", async () => {
                 ],
                 subjects
             );
-
             container.appendChild(tableContainer);
         }
     } catch (error) {
@@ -448,16 +577,94 @@ gpaButton?.addEventListener("click", async () => {
     }
 });
 
-/* Faculty shortcuts: informational only until faculty-specific endpoints exist. */
+/* FR-005: Academic Records */
+const academicRecordsButton = document.getElementById("loadAcademicRecords");
+
+academicRecordsButton?.addEventListener("click", async () => {
+    const container = document.getElementById("academicRecordsResults");
+    const messageElement = document.getElementById("academicRecordsMessage");
+    const semesterSelect = document.getElementById("academicSemesterNumber");
+
+    if (!currentUser || !container || !semesterSelect) {
+        showMessage(globalMessage, "Please sign in first.", true);
+        return;
+    }
+
+    if (currentUser.role !== "Student") {
+        showMessage(
+            messageElement,
+            "Academic records are available to student accounts.",
+            true
+        );
+        return;
+    }
+
+    const semesterValue = semesterSelect.value;
+    const semester = Number(semesterValue);
+
+    if (!semesterValue || !Number.isInteger(semester) || semester < 1 || semester > 8) {
+        showMessage(messageElement, "Choose a semester from 1 to 8.", true);
+        semesterSelect.focus();
+        return;
+    }
+
+    academicRecordsButton.disabled = true;
+    academicRecordsButton.textContent = "Loading records...";
+    container.textContent = "Retrieving academic records...";
+    clearMessage(messageElement);
+
+    try {
+        const result = await api(
+            `/api/academic-records/my?semester=${semester}`
+        );
+
+        if (!result || !Array.isArray(result.subjects)) {
+            throw new Error(
+                "The server returned an unexpected academic records response."
+            );
+        }
+
+        renderAcademicRecords(container, result.subjects);
+
+        if (result.subjects.length === 0) {
+            showMessage(
+                messageElement,
+                result.message ||
+                    `No academic records found for semester ${semester}.`
+            );
+        } else {
+            showMessage(
+                messageElement,
+                result.message ||
+                    `Academic records loaded for semester ${semester}.`
+            );
+
+            const academicYear = result.academic_year;
+            if (academicYear !== null && academicYear !== undefined && academicYear !== "") {
+                const yearInfo = document.createElement("p");
+                yearInfo.textContent = `Academic year: ${academicYear}`;
+                container.prepend(yearInfo);
+            }
+        }
+    } catch (error) {
+        container.replaceChildren();
+        showMessage(
+            messageElement,
+            error.message || "Unable to load academic records.",
+            true
+        );
+    } finally {
+        academicRecordsButton.disabled = false;
+        academicRecordsButton.textContent = "View Academic Records";
+    }
+});
+
+/* Faculty shortcuts: informational until faculty-specific endpoints exist. */
 function handleFacultyShortcut(action) {
     const container = document.getElementById("facultyResults");
-
     if (!container) return;
 
-    if (
-        !currentUser ||
-        !["Faculty", "Administrator"].includes(currentUser.role)
-    ) {
+    if (!currentUser || !["Faculty", "Administrator"].includes(currentUser.role)) {
         container.textContent =
             "Please sign in with a faculty or administrator account.";
         return;
@@ -474,21 +681,16 @@ document.getElementById("facultyAttendance")
 document.getElementById("facultyMarks")
     ?.addEventListener("click", () => handleFacultyShortcut("marks"));
 
-/*
- * Restore a session quietly.
- * An unauthenticated response is normal on the login page, not a UI error.
- */
+/* Restore an existing session quietly. */
 async function restoreSession() {
     try {
         const user = await api("/api/auth/me");
         openDashboard(user);
     } catch (_error) {
         currentUser = null;
-
         dashboardPanel?.classList.add("hidden");
         loginPanel?.classList.remove("hidden");
         logoutButton?.classList.add("hidden");
-
         clearMessage(loginMessage);
         clearMessage(globalMessage);
     }

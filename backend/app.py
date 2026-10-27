@@ -13,6 +13,7 @@ from backend.routes.subjects import subjects_bp
 from backend.routes.attendance import attendance_bp
 from backend.routes.auth import auth_bp
 from backend.routes.gpa import gpa_bp
+from backend.routes.academic_records import academic_records_bp
 from backend.routes.students import students_bp
 
 
@@ -42,7 +43,9 @@ def create_app():
 
     @login_manager.unauthorized_handler
     def unauthorized():
-        return jsonify({"error": "Authentication required."}), 401
+        return jsonify({
+            "error": "Authentication required."
+        }), 401
 
     @app.errorhandler(CSRFError)
     def handle_csrf_error(error):
@@ -51,22 +54,25 @@ def create_app():
             "message": error.description,
         }), 400
 
-    # Preserve all existing feature routes.
+    # Register all application API blueprints.
     app.register_blueprint(marks_bp)
     app.register_blueprint(subjects_bp)
     app.register_blueprint(attendance_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(gpa_bp)
+    app.register_blueprint(academic_records_bp)
     app.register_blueprint(students_bp)
 
-    # NFR-003: Serve the usability dashboard.
+    # Serve the dashboard at the application home page.
     @app.route("/")
     def home():
         return render_template("dashboard.html")
 
     @app.route("/api/health")
     def health():
-        return jsonify({"status": "healthy"})
+        return jsonify({
+            "status": "healthy"
+        })
 
     @app.route("/api/db-health")
     def database_health():
@@ -77,7 +83,9 @@ def create_app():
                 "status": "success",
             })
         except Exception:
-            app.logger.exception("Database connection check failed")
+            app.logger.exception(
+                "Database connection check failed"
+            )
             return jsonify({
                 "database": "unavailable",
                 "status": "error",

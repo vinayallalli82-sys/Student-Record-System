@@ -8,12 +8,14 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <header class="topbar">
+    <header class="app-header topbar">
         <div>
             <h1>Student Record System</h1>
             <p>Academic records made simple</p>
         </div>
-        <button id="logoutButton" class="secondary hidden">Log out</button>
+        <button id="logoutButton" class="secondary hidden" type="button">
+            Log out
+        </button>
     </header>
 
     <main class="container">
@@ -32,7 +34,9 @@
 
                 <button type="submit">Sign in</button>
             </form>
-            <p id="loginMessage" class="message" role="status" aria-live="polite"></p>
+
+            <p id="loginMessage" class="message"
+               role="status" aria-live="polite"></p>
         </section>
 
         <section id="dashboardPanel" class="hidden">
@@ -41,22 +45,38 @@
                 <p id="userDetails"></p>
             </div>
 
-            <nav class="navigation" aria-label="Dashboard navigation">
-                <button data-view="attendanceView">Attendance</button>
-                <button data-view="gpaView" id="gpaNav">Semester GPA</button>
-                <button data-view="facultyView" id="facultyNav" class="hidden">Faculty tools</button>
+            <nav class="dashboard-nav navigation"
+                 aria-label="Dashboard navigation">
+                <button type="button" data-view="attendanceView">
+                    Attendance
+                </button>
+                <button type="button" data-view="gpaView" id="gpaNav">
+                    Semester GPA
+                </button>
+                <button type="button" data-view="academicRecordsView"
+                        id="academicRecordsNav" class="hidden">
+                    Academic Records
+                </button>
+                <button type="button" data-view="facultyView"
+                        id="facultyNav" class="hidden">
+                    Faculty tools
+                </button>
             </nav>
 
             <section id="attendanceView" class="card view">
                 <h2>Attendance records</h2>
                 <p>View attendance recorded for your account.</p>
-                <button id="loadAttendance">Load attendance</button>
-                <div id="attendanceResults" class="results" aria-live="polite"></div>
+                <button id="loadAttendance" type="button">
+                    Load attendance
+                </button>
+                <div id="attendanceResults" class="results"
+                     aria-live="polite"></div>
             </section>
 
             <section id="gpaView" class="card view hidden">
                 <h2>Semester GPA</h2>
                 <p>Choose a semester to view your GPA.</p>
+
                 <label for="semesterNumber">Semester number</label>
                 <select id="semesterNumber">
                     <option value="">Choose a semester</option>
@@ -69,22 +89,64 @@
                     <option value="7">Semester 7</option>
                     <option value="8">Semester 8</option>
                 </select>
-                <button id="loadGpa">View GPA</button>
-                <div id="gpaResults" class="results" aria-live="polite"></div>
+
+                <button id="loadGpa" type="button">View GPA</button>
+                <div id="gpaResults" class="results"
+                     aria-live="polite"></div>
+            </section>
+
+            <section id="academicRecordsView" class="card view hidden">
+                <h2>Academic Records</h2>
+                <p>
+                    View semester-wise subjects, assessment marks,
+                    grades, credits, and attendance.
+                </p>
+
+                <label for="academicSemesterNumber">Semester number</label>
+                <select id="academicSemesterNumber">
+                    <option value="">Choose a semester</option>
+                    <option value="1">Semester 1</option>
+                    <option value="2">Semester 2</option>
+                    <option value="3">Semester 3</option>
+                    <option value="4">Semester 4</option>
+                    <option value="5">Semester 5</option>
+                    <option value="6">Semester 6</option>
+                    <option value="7">Semester 7</option>
+                    <option value="8">Semester 8</option>
+                </select>
+
+                <button id="loadAcademicRecords" type="button">
+                    View Academic Records
+                </button>
+
+                <p id="academicRecordsMessage" class="message"
+                   role="status" aria-live="polite"></p>
+                <div id="academicRecordsResults" class="results"
+                     aria-live="polite"></div>
             </section>
 
             <section id="facultyView" class="card view hidden">
                 <h2>Faculty tools</h2>
-                <p>Use these shortcuts to open attendance and marks management.</p>
-                <button id="facultyAttendance">Open attendance records</button>
-                <button id="facultyMarks">Open marks management</button>
-                <div id="facultyResults" class="results" aria-live="polite"></div>
+                <p>
+                    Use these shortcuts to open attendance and marks
+                    management.
+                </p>
+                <button id="facultyAttendance" type="button">
+                    Open attendance records
+                </button>
+                <button id="facultyMarks" type="button">
+                    Open marks management
+                </button>
+                <div id="facultyResults" class="results"
+                     aria-live="polite"></div>
             </section>
         </section>
 
-        <p id="globalMessage" class="message" role="status" aria-live="polite"></p>
+        <p id="globalMessage" class="message"
+           role="status" aria-live="polite"></p>
     </main>
 
-    <script src="{{ url_for('static', filename='dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='dashboard.js') }}"
+            defer></script>
 </body>
 </html>
