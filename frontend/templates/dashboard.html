@@ -1,0 +1,152 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Record System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header class="topbar">
+        <div>
+            <h1>Student Record System</h1>
+            <p>Academic records made simple</p>
+        </div>
+        <button id="logoutButton" class="secondary hidden">Log out</button>
+    </header>
+
+    <main class="container">
+        <section id="loginPanel" class="card login-card">
+            <h2>Welcome back</h2>
+            <p>Sign in to access your academic records.</p>
+
+            <form id="loginForm">
+                <label for="email">Email address</label>
+                <input id="email" name="email" type="email"
+                       autocomplete="username" required>
+
+                <label for="password">Password</label>
+                <input id="password" name="password" type="password"
+                       autocomplete="current-password" required>
+
+                <button type="submit">Sign in</button>
+            </form>
+            <p id="loginMessage" class="message" role="status" aria-live="polite"></p>
+        </section>
+
+        <section id="dashboardPanel" class="hidden">
+            <div class="welcome">
+                <h2 id="welcomeTitle">Your dashboard</h2>
+                <p id="userDetails"></p>
+            </div>
+
+            <nav class="navigation" aria-label="Dashboard navigation">
+                <button data-view="attendanceView">Attendance</button>
+                <button data-view="gpaView" id="gpaNav">Semester GPA</button>
+                <button data-view="facultyView" id="facultyNav" class="hidden">Faculty tools</button>
+            </nav>
+
+            <section id="attendanceView" class="card view">
+                <h2>Attendance records</h2>
+                <p>View attendance recorded for your account.</p>
+                <button id="loadAttendance">Load attendance</button>
+                <div id="attendanceResults" class="results" aria-live="polite"></div>
+            </section>
+
+            <section id="gpaView" class="card view hidden">
+                <h2>Semester GPA</h2>
+                <p>Choose a semester to view your GPA.</p>
+                <label for="semesterNumber">Semester number</label>
+                <select id="semesterNumber">
+                    <option value="">Choose a semester</option>
+                    <option value="1">Semester 1</option>
+                    <option value="2">Semester 2</option>
+                    <option value="3">Semester 3</option>
+                    <option value="4">Semester 4</option>
+                    <option value="5">Semester 5</option>
+                    <option value="6">Semester 6</option>
+                    <option value="7">Semester 7</option>
+                    <option value="8">Semester 8</option>
+                </select>
+                <button id="loadGpa">View GPA</button>
+                <div id="gpaResults" class="results" aria-live="polite"></div>
+            </section>
+
+<section id="facultyView" class="card view hidden">
+    <h2>Faculty tools</h2>
+    <button type="button" id="facultyAttendance">
+        Open attendance records
+    </button>
+
+    <section id="facultyAttendanceSection">
+        <h3>Faculty attendance management</h3>
+        <p>Record attendance for students enrolled in a subject.</p>
+
+        <label for="attendanceSubject">Subject</label>
+        <select id="attendanceSubject">
+            <option value="">Choose a subject</option>
+        </select>
+
+        <label for="attendanceDate">Attendance date</label>
+        <input id="attendanceDate" type="date">
+
+        <p id="facultyAttendanceMessage" class="message" role="status"
+           aria-live="polite"></p>
+        <div id="facultyAttendanceResults" class="results" aria-live="polite">
+            Choose a subject and date to load enrolled students.
+        </div>
+        <button type="button" id="saveAttendanceButton" disabled>
+            Save attendance
+        </button>
+    </section>
+
+    <h3>Faculty marks management</h3>
+    <p>Enter, review, and update student assessment marks.</p>
+
+    <form id="marksForm">
+        <input type="hidden" id="markId">
+
+        <label for="marksSubject">Subject</label>
+        <select id="marksSubject" required>
+            <option value="">Choose a subject</option>
+        </select>
+
+        <label for="marksStudent">Student</label>
+        <select id="marksStudent" required>
+            <option value="">Choose a student</option>
+        </select>
+
+        <label for="assessmentName">Assessment name</label>
+        <input id="assessmentName" maxlength="100" required>
+
+        <label for="marksObtained">Marks obtained</label>
+        <input id="marksObtained" type="number" min="0"
+               max="9999.99" step="0.01" required>
+
+        <label for="maxMarks">Maximum marks</label>
+        <input id="maxMarks" type="number" min="0.01"
+               max="9999.99" step="0.01" required>
+
+        <button type="submit" id="saveMarksButton">Save marks</button>
+        <button type="button" id="resetMarksButton" class="secondary">
+            Clear form
+        </button>
+    </form>
+
+    <p id="marksMessage" class="message" role="status"
+       aria-live="polite"></p>
+
+    <h3>Saved marks</h3>
+    <button type="button" id="loadMarksButton">Refresh marks</button>
+    <div id="marksResults" class="results" aria-live="polite"></div>
+</section>
+
+        </section>
+
+        <p id="globalMessage" class="message" role="status" aria-live="polite"></p>
+    </main>
+
+    <script src="{{ url_for('static', filename='dashboard.js') }}" defer></script>
+</body>
+</html>

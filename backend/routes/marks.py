@@ -8,6 +8,8 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from backend.extensions import db
 from backend.models.mark import Mark
+from backend.models.student import Student
+from backend.models.subject import Subject
 
 
 marks_bp = Blueprint("marks", __name__, url_prefix="/api/marks")
@@ -113,6 +115,42 @@ def mark_to_dict(mark):
         ),
     }
 
+@marks_bp.get("/")
+@faculty_required
+def list_marks():
+    """List saved marks for faculty review."""
+    student_id = request.args.get("student_id", type=int)
+    subject_id = request.args.get("subject_id", type=int)
+
+    query = (
+        db.session.query(Mark, Student, Subject)
+        .join(Student, Mark.student_id == Student.student_id)
+        .join(Subject, Mark.subject_id == Subject.subject_id)
+    )
+
+    if student_id is not None:
+        if student_id <= 0:
+            return jsonify({"error": "student_id must be positive."}), 400
+        query = query.filter(Mark.student_id == student_id)
+
+    if subject_id is not None:
+        if subject_id <= 0:
+            return jsonify({"error": "subject_id must be positive."}), 400
+        query = query.filter(Mark.subject_id == subject_id)
+
+    rows = query.order_by(Mark.mark_id.desc()).all()
+
+    return jsonify([
+        {
+            **mark_to_dict(mark),
+            "registration_number": student.registration_number,
+            "first_name": student.first_name,
+            "last_name": student.last_name,
+            "subject_code": subject.subject_code,
+            "subject_name": subject.subject_name,
+        }
+        for mark, student, subject in rows
+    ]), 200
 
 @marks_bp.post("/")
 @faculty_required
