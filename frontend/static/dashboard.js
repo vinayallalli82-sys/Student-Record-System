@@ -1,4 +1,4 @@
-
+﻿
 "use strict";
 
 /*
@@ -83,7 +83,12 @@ async function api(url, options = {}) {
 
 /* Navigation */
 function showView(viewId) {
-    ["attendanceView", "gpaView", "facultyView"].forEach((id) => {
+    [
+        "attendanceView",
+        "gpaView",
+        "academicRecordsView",
+        "facultyView"
+    ].forEach((id) => {
         const section = document.getElementById(id);
 
         if (section) {
@@ -152,6 +157,123 @@ function renderTable(container, columns, records) {
     container.appendChild(table);
 }
 
+function formatNumber(value, decimalPlaces = 2) {
+    if (value === null || value === undefined || value === "") {
+        return "—";
+    }
+
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toFixed(decimalPlaces) : "—";
+}
+
+function appendSummaryRow(container, label, value) {
+    const row = document.createElement("p");
+    const strong = document.createElement("strong");
+
+    strong.textContent = `${label}: `;
+    row.appendChild(strong);
+    row.appendChild(document.createTextNode(String(value)));
+    container.appendChild(row);
+}
+
+function renderAcademicRecords(container, subjects) {
+    container.replaceChildren();
+
+    if (!Array.isArray(subjects) || subjects.length === 0) {
+        const emptyMessage = document.createElement("p");
+        emptyMessage.textContent =
+            "No subjects or academic records are available for this semester.";
+        container.appendChild(emptyMessage);
+        return;
+    }
+
+    subjects.forEach((subject) => {
+        const card = document.createElement("article");
+        card.className = "academic-subject";
+
+        const heading = document.createElement("h3");
+        heading.textContent =
+            `${subject.subject_code || "Subject"} — ` +
+            `${subject.subject_name || "Unnamed subject"}`;
+        card.appendChild(heading);
+        appendSummaryRow(card, "Credits", formatNumber(subject.credits, 1));
+
+        const assessments = Array.isArray(subject.assessments)
+            ? subject.assessments
+            : [];
+        const assessmentHeading = document.createElement("h4");
+        assessmentHeading.textContent = "Assessment marks";
+        card.appendChild(assessmentHeading);
+
+        if (assessments.length > 0) {
+            const tableContainer = document.createElement("div");
+            renderTable(
+                tableContainer,
+                [
+                    { key: "assessment_name", label: "Assessment" },
+                    { key: "marks_obtained", label: "Marks Obtained" },
+                    { key: "max_marks", label: "Maximum Marks" },
+                    { key: "percentage", label: "Percentage (%)" },
+                    { key: "grade", label: "Grade" },
+                    { key: "grade_point", label: "Grade Point" }
+                ],
+                assessments.map((assessment) => ({
+                    ...assessment,
+                    marks_obtained: formatNumber(assessment.marks_obtained),
+                    max_marks: formatNumber(assessment.max_marks),
+                    percentage: formatNumber(assessment.percentage),
+                    grade_point: formatNumber(assessment.grade_point)
+                }))
+            );
+            card.appendChild(tableContainer);
+        } else {
+            const noAssessments = document.createElement("p");
+            noAssessments.textContent =
+                "No assessment marks have been recorded for this subject.";
+            card.appendChild(noAssessments);
+        }
+
+        const totalObtained = Number(subject.total_marks_obtained);
+        const totalMaximum = Number(subject.total_max_marks);
+        if (
+            subject.total_marks_obtained !== null &&
+            subject.total_marks_obtained !== undefined &&
+            subject.total_max_marks !== null &&
+            subject.total_max_marks !== undefined &&
+            Number.isFinite(totalObtained) &&
+            Number.isFinite(totalMaximum)
+        ) {
+            appendSummaryRow(
+                card,
+                "Total marks",
+                `${formatNumber(totalObtained)} / ${formatNumber(totalMaximum)}`
+            );
+        }
+
+        const attendance = subject.attendance || {};
+        const attendanceHeading = document.createElement("h4");
+        attendanceHeading.textContent = "Attendance";
+        card.appendChild(attendanceHeading);
+        appendSummaryRow(
+            card,
+            "Total classes",
+            Number(attendance.total_classes || 0)
+        );
+        appendSummaryRow(
+            card,
+            "Classes attended",
+            Number(attendance.classes_attended || 0)
+        );
+        appendSummaryRow(
+            card,
+            "Attendance percentage",
+            `${formatNumber(Number(attendance.percentage || 0))}%`
+        );
+
+        container.appendChild(card);
+    });
+}
+
 /* Open the dashboard for the authenticated user */
 function openDashboard(user) {
     currentUser = user;
@@ -179,8 +301,14 @@ function openDashboard(user) {
     document.getElementById("gpaNav")
         ?.classList.toggle("hidden", !isStudent);
 
+    document.getElementById("academicRecordsNav")
+        ?.classList.toggle("hidden", !isStudent);
+
     document.getElementById("facultyNav")
         ?.classList.toggle("hidden", !isFaculty);
+
+    document.getElementById("facultyMarksSection")
+        ?.classList.toggle("hidden", user.role !== "Faculty");
 
     clearMessage(loginMessage);
     showMessage(globalMessage, "Signed in successfully.");
@@ -198,6 +326,18 @@ function closeDashboard(message = "") {
     loginForm?.reset();
 
     clearMessage(globalMessage);
+    [
+        "attendanceResults",
+        "gpaResults",
+        "academicRecordsResults",
+        "marksResults",
+        "facultyAttendanceResults"
+    ].forEach((id) => {
+        document.getElementById(id)?.replaceChildren();
+    });
+    clearMessage(document.getElementById("academicRecordsMessage"));
+    clearMessage(marksMessage);
+    clearMessage(facultyAttendanceMessage);
 
     if (message) {
         showMessage(loginMessage, message);
@@ -1087,11 +1227,10 @@ loadMarksButton?.addEventListener("click", loadSavedMarks);
 
 /* Initialize the faculty marks view when it is opened */
 async function initializeFacultyMarks() {
-    if (!currentUser ||
-        !["Faculty", "Administrator"].includes(currentUser.role)) {
+    if (!currentUser || currentUser.role !== "Faculty") {
         showMessage(
             globalMessage,
-            "Faculty tools require a faculty or administrator account.",
+            "Marks management requires a faculty account.",
             true
         );
         return;
@@ -1123,12 +1262,12 @@ document.querySelectorAll("[data-view]").forEach((button) => {
         const requestedViewId = button.dataset.view;
 
         if (
-            requestedViewId === "gpaView" &&
+            ["gpaView", "academicRecordsView"].includes(requestedViewId) &&
             currentUser.role !== "Student"
         ) {
             showMessage(
                 globalMessage,
-                "GPA records are available to student accounts.",
+                "Academic records are available to student accounts.",
                 true
             );
             return;
@@ -1159,7 +1298,9 @@ document.querySelectorAll("[data-view]").forEach((button) => {
             if (requestedViewId === "attendanceView") {
                 await initializeFacultyAttendance();
             } else {
-                await initializeFacultyMarks();
+                if (currentUser.role === "Faculty") {
+                    await initializeFacultyMarks();
+                }
                 await initializeFacultyAttendance();
             }
         }
@@ -1186,6 +1327,89 @@ document.getElementById("facultyAttendance")
         await initializeFacultyAttendance();
         document.getElementById("attendanceSubject")?.focus();
     });
+
+/* Student-only semester academic records */
+const academicRecordsButton =
+    document.getElementById("loadAcademicRecords");
+
+academicRecordsButton?.addEventListener("click", async () => {
+    const container = document.getElementById("academicRecordsResults");
+    const messageElement = document.getElementById("academicRecordsMessage");
+    const semesterSelect =
+        document.getElementById("academicSemesterNumber");
+
+    if (!currentUser || !container || !semesterSelect) {
+        showMessage(globalMessage, "Please sign in first.", true);
+        return;
+    }
+
+    if (currentUser.role !== "Student") {
+        showMessage(
+            messageElement,
+            "Academic records are available to student accounts.",
+            true
+        );
+        return;
+    }
+
+    const semesterValue = semesterSelect.value;
+    const semester = Number(semesterValue);
+    if (
+        !semesterValue ||
+        !Number.isInteger(semester) ||
+        semester < 1 ||
+        semester > 8
+    ) {
+        showMessage(messageElement, "Choose a semester from 1 to 8.", true);
+        semesterSelect.focus();
+        return;
+    }
+
+    academicRecordsButton.disabled = true;
+    academicRecordsButton.textContent = "Loading records...";
+    container.textContent = "Retrieving academic records...";
+    clearMessage(messageElement);
+
+    try {
+        const result = await api(
+            `/api/academic-records/my?semester=${semester}`
+        );
+
+        if (!result || !Array.isArray(result.subjects)) {
+            throw new Error(
+                "The server returned an unexpected academic records response."
+            );
+        }
+
+        renderAcademicRecords(container, result.subjects);
+        showMessage(
+            messageElement,
+            result.message ||
+                `Academic records loaded for semester ${semester}.`
+        );
+
+        if (
+            result.subjects.length > 0 &&
+            result.academic_year !== null &&
+            result.academic_year !== undefined &&
+            result.academic_year !== ""
+        ) {
+            const yearInfo = document.createElement("p");
+            yearInfo.textContent = `Academic year: ${result.academic_year}`;
+            container.prepend(yearInfo);
+        }
+    } catch (error) {
+        container.replaceChildren();
+        showMessage(
+            messageElement,
+            error.message || "Unable to load academic records.",
+            true
+        );
+    } finally {
+        academicRecordsButton.disabled = false;
+        academicRecordsButton.textContent = "View Academic Records";
+    }
+});
 
 /* Restore an existing authenticated session */
 async function restoreSession() {

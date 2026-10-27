@@ -1,4 +1,4 @@
-
+﻿
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,12 +8,14 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <header class="topbar">
+    <header class="app-header topbar">
         <div>
             <h1>Student Record System</h1>
             <p>Academic records made simple</p>
         </div>
-        <button id="logoutButton" class="secondary hidden">Log out</button>
+        <button id="logoutButton" class="secondary hidden" type="button">
+            Log out
+        </button>
     </header>
 
     <main class="container">
@@ -32,7 +34,9 @@
 
                 <button type="submit">Sign in</button>
             </form>
-            <p id="loginMessage" class="message" role="status" aria-live="polite"></p>
+
+            <p id="loginMessage" class="message"
+               role="status" aria-live="polite"></p>
         </section>
 
         <section id="dashboardPanel" class="hidden">
@@ -41,22 +45,38 @@
                 <p id="userDetails"></p>
             </div>
 
-            <nav class="navigation" aria-label="Dashboard navigation">
-                <button data-view="attendanceView">Attendance</button>
-                <button data-view="gpaView" id="gpaNav">Semester GPA</button>
-                <button data-view="facultyView" id="facultyNav" class="hidden">Faculty tools</button>
+            <nav class="dashboard-nav navigation"
+                 aria-label="Dashboard navigation">
+                <button type="button" data-view="attendanceView">
+                    Attendance
+                </button>
+                <button type="button" data-view="gpaView" id="gpaNav">
+                    Semester GPA
+                </button>
+                <button type="button" data-view="academicRecordsView"
+                        id="academicRecordsNav" class="hidden">
+                    Academic Records
+                </button>
+                <button type="button" data-view="facultyView"
+                        id="facultyNav" class="hidden">
+                    Faculty tools
+                </button>
             </nav>
 
             <section id="attendanceView" class="card view">
                 <h2>Attendance records</h2>
                 <p>View attendance recorded for your account.</p>
-                <button id="loadAttendance">Load attendance</button>
-                <div id="attendanceResults" class="results" aria-live="polite"></div>
+                <button id="loadAttendance" type="button">
+                    Load attendance
+                </button>
+                <div id="attendanceResults" class="results"
+                     aria-live="polite"></div>
             </section>
 
             <section id="gpaView" class="card view hidden">
                 <h2>Semester GPA</h2>
                 <p>Choose a semester to view your GPA.</p>
+
                 <label for="semesterNumber">Semester number</label>
                 <select id="semesterNumber">
                     <option value="">Choose a semester</option>
@@ -69,84 +89,133 @@
                     <option value="7">Semester 7</option>
                     <option value="8">Semester 8</option>
                 </select>
-                <button id="loadGpa">View GPA</button>
-                <div id="gpaResults" class="results" aria-live="polite"></div>
+
+                <button id="loadGpa" type="button">View GPA</button>
+                <div id="gpaResults" class="results"
+                     aria-live="polite"></div>
             </section>
 
-<section id="facultyView" class="card view hidden">
-    <h2>Faculty tools</h2>
-    <button type="button" id="facultyAttendance">
-        Open attendance records
-    </button>
+            <section id="academicRecordsView" class="card view hidden">
+                <h2>Academic Records</h2>
+                <p>
+                    View semester-wise subjects, assessment marks,
+                    grades, credits, and attendance.
+                </p>
 
-    <section id="facultyAttendanceSection">
-        <h3>Faculty attendance management</h3>
-        <p>Record attendance for students enrolled in a subject.</p>
+                <label for="academicSemesterNumber">Semester number</label>
+                <select id="academicSemesterNumber">
+                    <option value="">Choose a semester</option>
+                    <option value="1">Semester 1</option>
+                    <option value="2">Semester 2</option>
+                    <option value="3">Semester 3</option>
+                    <option value="4">Semester 4</option>
+                    <option value="5">Semester 5</option>
+                    <option value="6">Semester 6</option>
+                    <option value="7">Semester 7</option>
+                    <option value="8">Semester 8</option>
+                </select>
 
-        <label for="attendanceSubject">Subject</label>
-        <select id="attendanceSubject">
-            <option value="">Choose a subject</option>
-        </select>
+                <button id="loadAcademicRecords" type="button">
+                    View Academic Records
+                </button>
 
-        <label for="attendanceDate">Attendance date</label>
-        <input id="attendanceDate" type="date">
+                <p id="academicRecordsMessage" class="message"
+                   role="status" aria-live="polite"></p>
+                <div id="academicRecordsResults" class="results"
+                     aria-live="polite"></div>
+            </section>
 
-        <p id="facultyAttendanceMessage" class="message" role="status"
-           aria-live="polite"></p>
-        <div id="facultyAttendanceResults" class="results" aria-live="polite">
-            Choose a subject and date to load enrolled students.
-        </div>
-        <button type="button" id="saveAttendanceButton" disabled>
-            Save attendance
-        </button>
-    </section>
+            <section id="facultyView" class="card view hidden">
+                <h2>Faculty tools</h2>
+                <p>
+                    Manage attendance and assessment marks for enrolled
+                    students.
+                </p>
 
-    <h3>Faculty marks management</h3>
-    <p>Enter, review, and update student assessment marks.</p>
+                <button id="facultyAttendance" type="button">
+                    Open attendance records
+                </button>
 
-    <form id="marksForm">
-        <input type="hidden" id="markId">
+                <section id="facultyAttendanceSection">
+                    <h3>Faculty attendance management</h3>
+                    <p>Record attendance for students enrolled in a subject.</p>
 
-        <label for="marksSubject">Subject</label>
-        <select id="marksSubject" required>
-            <option value="">Choose a subject</option>
-        </select>
+                    <label for="attendanceSubject">Subject</label>
+                    <select id="attendanceSubject">
+                        <option value="">Choose a subject</option>
+                    </select>
 
-        <label for="marksStudent">Student</label>
-        <select id="marksStudent" required>
-            <option value="">Choose a student</option>
-        </select>
+                    <label for="attendanceDate">Attendance date</label>
+                    <input id="attendanceDate" type="date">
 
-        <label for="assessmentName">Assessment name</label>
-        <input id="assessmentName" maxlength="100" required>
+                    <p id="facultyAttendanceMessage" class="message"
+                       role="status" aria-live="polite"></p>
+                    <div id="facultyAttendanceResults" class="results"
+                         aria-live="polite">
+                        Choose a subject and date to load enrolled students.
+                    </div>
+                    <button type="button" id="saveAttendanceButton" disabled>
+                        Save attendance
+                    </button>
+                </section>
 
-        <label for="marksObtained">Marks obtained</label>
-        <input id="marksObtained" type="number" min="0"
-               max="9999.99" step="0.01" required>
+                <section id="facultyMarksSection" class="hidden">
+                    <h3>Faculty marks management</h3>
+                    <p>Enter, review, and update student assessment marks.</p>
+                    <button id="facultyMarks" type="button">
+                        Open marks management
+                    </button>
 
-        <label for="maxMarks">Maximum marks</label>
-        <input id="maxMarks" type="number" min="0.01"
-               max="9999.99" step="0.01" required>
+                    <form id="marksForm">
+                        <input type="hidden" id="markId">
 
-        <button type="submit" id="saveMarksButton">Save marks</button>
-        <button type="button" id="resetMarksButton" class="secondary">
-            Clear form
-        </button>
-    </form>
+                        <label for="marksSubject">Subject</label>
+                        <select id="marksSubject" required>
+                            <option value="">Choose a subject</option>
+                        </select>
 
-    <p id="marksMessage" class="message" role="status"
-       aria-live="polite"></p>
+                        <label for="marksStudent">Student</label>
+                        <select id="marksStudent" required>
+                            <option value="">Choose a student</option>
+                        </select>
 
-    <h3>Saved marks</h3>
-    <button type="button" id="loadMarksButton">Refresh marks</button>
-    <div id="marksResults" class="results" aria-live="polite"></div>
-</section>
+                        <label for="assessmentName">Assessment name</label>
+                        <input id="assessmentName" maxlength="100" required>
 
+                        <label for="marksObtained">Marks obtained</label>
+                        <input id="marksObtained" type="number" min="0"
+                               max="9999.99" step="0.01" required>
+
+                        <label for="maxMarks">Maximum marks</label>
+                        <input id="maxMarks" type="number" min="0.01"
+                               max="9999.99" step="0.01" required>
+
+                        <button type="submit" id="saveMarksButton">
+                            Save marks
+                        </button>
+                        <button type="button" id="resetMarksButton"
+                                class="secondary">
+                            Clear form
+                        </button>
+                    </form>
+
+                    <p id="marksMessage" class="message" role="status"
+                       aria-live="polite"></p>
+                    <h3>Saved marks</h3>
+                    <button type="button" id="loadMarksButton">
+                        Refresh marks
+                    </button>
+                    <div id="marksResults" class="results"
+                         aria-live="polite"></div>
+                </section>
+            </section>
         </section>
 
-        <p id="globalMessage" class="message" role="status" aria-live="polite"></p>
+        <p id="globalMessage" class="message"
+           role="status" aria-live="polite"></p>
     </main>
 
-    <script src="{{ url_for('static', filename='dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='dashboard.js') }}"
+            defer></script>
 </body>
 </html>
