@@ -1,4 +1,4 @@
-
+﻿
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -128,17 +128,86 @@
             <section id="facultyView" class="card view hidden">
                 <h2>Faculty tools</h2>
                 <p>
-                    Use these shortcuts to open attendance and marks
-                    management.
+                    Manage attendance and assessment marks for enrolled
+                    students.
                 </p>
+
                 <button id="facultyAttendance" type="button">
                     Open attendance records
                 </button>
-                <button id="facultyMarks" type="button">
-                    Open marks management
-                </button>
-                <div id="facultyResults" class="results"
-                     aria-live="polite"></div>
+
+                <section id="facultyAttendanceSection">
+                    <h3>Faculty attendance management</h3>
+                    <p>Record attendance for students enrolled in a subject.</p>
+
+                    <label for="attendanceSubject">Subject</label>
+                    <select id="attendanceSubject">
+                        <option value="">Choose a subject</option>
+                    </select>
+
+                    <label for="attendanceDate">Attendance date</label>
+                    <input id="attendanceDate" type="date">
+
+                    <p id="facultyAttendanceMessage" class="message"
+                       role="status" aria-live="polite"></p>
+                    <div id="facultyAttendanceResults" class="results"
+                         aria-live="polite">
+                        Choose a subject and date to load enrolled students.
+                    </div>
+                    <button type="button" id="saveAttendanceButton" disabled>
+                        Save attendance
+                    </button>
+                </section>
+
+                <section id="facultyMarksSection" class="hidden">
+                    <h3>Faculty marks management</h3>
+                    <p>Enter, review, and update student assessment marks.</p>
+                    <button id="facultyMarks" type="button">
+                        Open marks management
+                    </button>
+
+                    <form id="marksForm">
+                        <input type="hidden" id="markId">
+
+                        <label for="marksSubject">Subject</label>
+                        <select id="marksSubject" required>
+                            <option value="">Choose a subject</option>
+                        </select>
+
+                        <label for="marksStudent">Student</label>
+                        <select id="marksStudent" required>
+                            <option value="">Choose a student</option>
+                        </select>
+
+                        <label for="assessmentName">Assessment name</label>
+                        <input id="assessmentName" maxlength="100" required>
+
+                        <label for="marksObtained">Marks obtained</label>
+                        <input id="marksObtained" type="number" min="0"
+                               max="9999.99" step="0.01" required>
+
+                        <label for="maxMarks">Maximum marks</label>
+                        <input id="maxMarks" type="number" min="0.01"
+                               max="9999.99" step="0.01" required>
+
+                        <button type="submit" id="saveMarksButton">
+                            Save marks
+                        </button>
+                        <button type="button" id="resetMarksButton"
+                                class="secondary">
+                            Clear form
+                        </button>
+                    </form>
+
+                    <p id="marksMessage" class="message" role="status"
+                       aria-live="polite"></p>
+                    <h3>Saved marks</h3>
+                    <button type="button" id="loadMarksButton">
+                        Refresh marks
+                    </button>
+                    <div id="marksResults" class="results"
+                         aria-live="polite"></div>
+                </section>
             </section>
         </section>
 
