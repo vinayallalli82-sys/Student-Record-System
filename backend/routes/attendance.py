@@ -155,15 +155,27 @@ def my_attendance():
     ]), 200
 
 
+
 @attendance_bp.get("")
 @roles_required("Faculty", "Administrator")
 def list_attendance():
     """List attendance with optional subject and date filters."""
     subject_id = request.args.get("subject_id", type=int)
     date_value = request.args.get("date")
+    start_date_value = request.args.get("start_date")
+    end_date_value = request.args.get("end_date")
+
+    # Exact date cannot be combined with a date range.
+    if date_value is not None and (
+        start_date_value is not None or end_date_value is not None
+    ):
+        return jsonify({
+            "error": "Use date or a date range, not both."
+        }), 400
 
     query = Attendance.query
 
+    # Filter by subject.
     if subject_id is not None:
         if subject_id <= 0:
             return jsonify({
@@ -175,6 +187,7 @@ def list_attendance():
 
         query = query.filter_by(subject_id=subject_id)
 
+    # Filter by an exact date.
     if date_value is not None:
         attendance_date = parse_date(date_value)
         if attendance_date is None:
@@ -183,6 +196,38 @@ def list_attendance():
             }), 400
 
         query = query.filter_by(attendance_date=attendance_date)
+
+    # Filter by a date range.
+    if start_date_value is not None:
+        start_date = parse_date(start_date_value)
+        if start_date is None:
+            return jsonify({
+                "error": "start_date must use YYYY-MM-DD format."
+            }), 400
+
+        query = query.filter(
+            Attendance.attendance_date >= start_date
+        )
+
+    if end_date_value is not None:
+        end_date = parse_date(end_date_value)
+        if end_date is None:
+            return jsonify({
+                "error": "end_date must use YYYY-MM-DD format."
+            }), 400
+
+        query = query.filter(
+            Attendance.attendance_date <= end_date
+        )
+
+    if (
+        start_date_value is not None
+        and end_date_value is not None
+        and start_date > end_date
+    ):
+        return jsonify({
+            "error": "start_date must not be after end_date."
+        }), 400
 
     records = query.order_by(
         Attendance.attendance_date.desc()
