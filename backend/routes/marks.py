@@ -12,6 +12,7 @@ from backend.extensions import db
 from backend.models.mark import Mark
 from backend.models.student import Student
 from backend.models.subject import Subject
+from backend.models.student_subject import StudentSubject
 
 
 marks_bp = Blueprint("marks", __name__, url_prefix="/api/marks")
@@ -25,6 +26,7 @@ def faculty_required(view_function):
     def wrapped(*args, **kwargs):
         if current_user.role != "Faculty":
             return jsonify({"error": "Faculty access required."}), 403
+
         return view_function(*args, **kwargs)
 
     return wrapped
@@ -32,6 +34,7 @@ def faculty_required(view_function):
 
 def parse_marks(data):
     """Validate and parse the marks request data."""
+
     required = (
         "student_id",
         "subject_id",
@@ -48,6 +51,7 @@ def parse_marks(data):
         return None, f"Missing required fields: {', '.join(missing)}"
 
     ids = (data["student_id"], data["subject_id"])
+
     if any(
         isinstance(value, bool) or not isinstance(value, int)
         for value in ids
@@ -55,14 +59,17 @@ def parse_marks(data):
         return None, "Student ID and subject ID must be integers."
 
     student_id, subject_id = ids
+
     if student_id <= 0 or subject_id <= 0:
         return None, "Student ID and subject ID must be positive integers."
 
     assessment_name = data["assessment_name"]
+
     if not isinstance(assessment_name, str) or not assessment_name.strip():
         return None, "Assessment name cannot be empty."
 
     assessment_name = assessment_name.strip()
+
     if len(assessment_name) > 100:
         return None, "Assessment name cannot exceed 100 characters."
 
@@ -102,8 +109,35 @@ def parse_marks(data):
     }, None
 
 
+def validate_enrollment(student_id, subject_id):
+    """Check that a student exists and is enrolled in the subject."""
+
+    student = db.session.get(Student, student_id)
+    if student is None:
+        return "Student not found.", 404
+
+    subject = db.session.get(Subject, subject_id)
+    if subject is None:
+        return "Subject not found.", 404
+
+    enrollment = (
+        db.session.query(StudentSubject)
+        .filter(
+            StudentSubject.student_id == student_id,
+            StudentSubject.subject_id == subject_id,
+        )
+        .first()
+    )
+
+    if enrollment is None:
+        return "Student is not enrolled in this subject.", 400
+
+    return None
+
+
 def mark_to_dict(mark):
     """Convert a marks record into a JSON-compatible dictionary."""
+
     return {
         "mark_id": mark.mark_id,
         "student_id": mark.student_id,
@@ -122,6 +156,7 @@ def mark_to_dict(mark):
 @faculty_required
 def list_marks():
     """List saved marks for faculty review."""
+
     student_id = request.args.get("student_id", type=int)
     subject_id = request.args.get("subject_id", type=int)
 
@@ -134,11 +169,13 @@ def list_marks():
     if student_id is not None:
         if student_id <= 0:
             return jsonify({"error": "student_id must be positive."}), 400
+
         query = query.filter(Mark.student_id == student_id)
 
     if subject_id is not None:
         if subject_id <= 0:
             return jsonify({"error": "subject_id must be positive."}), 400
+
         query = query.filter(Mark.subject_id == subject_id)
 
     rows = query.order_by(Mark.mark_id.desc()).all()
@@ -159,9 +196,10 @@ def list_marks():
 @marks_bp.get("/summary")
 @faculty_required
 def subject_marks_summary():
-    """Return a subject-wise summary for faculty, including students
-    enrolled in the subject who do not yet have recorded marks.
+    """Return a subject-wise summary, including enrolled students
+    who do not yet have recorded marks.
     """
+
     subject_id = request.args.get("subject_id", type=int)
 
     if subject_id is None or subject_id <= 0:
@@ -174,10 +212,7 @@ def subject_marks_summary():
     if subject is None:
         return jsonify({"error": "Subject not found."}), 404
 
-    # Import locally to avoid model-registration/import-order problems.
-    from backend.models.student_subject import StudentSubject
-
-    # Start with enrolled students, then include their marks if available.
+    # Start with enrollments so students without marks are included.
     rows = (
         db.session.query(Student, Mark)
         .join(
@@ -219,8 +254,7 @@ def subject_marks_summary():
             })
 
     has_marks = any(
-        student_record["assessments"]
-        for student_record in students.values()
+        record["assessments"] for record in students.values()
     )
 
     if not students:
@@ -245,9 +279,21 @@ def subject_marks_summary():
 @marks_bp.post("/")
 @faculty_required
 def create_mark():
+    """Create marks for an enrolled student."""
+
     data, error = parse_marks(request.get_json(silent=True))
+
     if error:
         return jsonify({"error": error}), 400
+
+    enrollment_error = validate_enrollment(
+        data["student_id"],
+        data["subject_id"],
+    )
+
+    if enrollment_error:
+        message, status_code = enrollment_error
+        return jsonify({"error": message}), status_code
 
     mark = Mark(
         **data,
@@ -257,52 +303,69 @@ def create_mark():
     try:
         db.session.add(mark)
         db.session.commit()
+
         return jsonify(mark_to_dict(mark)), 201
 
     except IntegrityError:
         db.session.rollback()
         return jsonify({
             "error": (
-                "Student or subject does not exist, or marks for "
-                "this assessment already exist."
+                "Marks for this assessment already exist, or a database "
+                "constraint was violated."
             )
         }), 409
 
     except SQLAlchemyError:
         db.session.rollback()
         current_app.logger.exception("Failed to create marks")
+
         return jsonify({"error": "Unable to save marks."}), 500
 
 
 @marks_bp.put("/<int:mark_id>")
 @faculty_required
 def update_mark(mark_id):
+    """Update marks for an enrolled student."""
+
     data, error = parse_marks(request.get_json(silent=True))
+
     if error:
         return jsonify({"error": error}), 400
 
     mark = db.session.get(Mark, mark_id)
+
     if mark is None:
         return jsonify({"error": "Marks record not found."}), 404
+
+    enrollment_error = validate_enrollment(
+        data["student_id"],
+        data["subject_id"],
+    )
+
+    if enrollment_error:
+        message, status_code = enrollment_error
+        return jsonify({"error": message}), status_code
 
     try:
         for field, value in data.items():
             setattr(mark, field, value)
 
-        # Preserve the original faculty member recorded in entered_by.
+        # Keep the original faculty member in entered_by.
         db.session.commit()
+
         return jsonify(mark_to_dict(mark)), 200
 
     except IntegrityError:
         db.session.rollback()
         return jsonify({
             "error": (
-                "Student or subject does not exist, or another record "
-                "already uses this assessment."
+                "Another record already uses this assessment, or a "
+                "database constraint was violated."
             )
         }), 409
 
     except SQLAlchemyError:
         db.session.rollback()
         current_app.logger.exception("Failed to update marks")
+
         return jsonify({"error": "Unable to update marks."}), 500

@@ -1,4 +1,3 @@
-﻿
 "use strict";
 
 /*
@@ -201,6 +200,7 @@ function renderAcademicRecords(container, subjects) {
         const assessments = Array.isArray(subject.assessments)
             ? subject.assessments
             : [];
+
         const assessmentHeading = document.createElement("h4");
         assessmentHeading.textContent = "Assessment marks";
         card.appendChild(assessmentHeading);
@@ -235,6 +235,7 @@ function renderAcademicRecords(container, subjects) {
 
         const totalObtained = Number(subject.total_marks_obtained);
         const totalMaximum = Number(subject.total_max_marks);
+
         if (
             subject.total_marks_obtained !== null &&
             subject.total_marks_obtained !== undefined &&
@@ -326,6 +327,7 @@ function closeDashboard(message = "") {
     loginForm?.reset();
 
     clearMessage(globalMessage);
+
     [
         "attendanceResults",
         "gpaResults",
@@ -335,6 +337,7 @@ function closeDashboard(message = "") {
     ].forEach((id) => {
         document.getElementById(id)?.replaceChildren();
     });
+
     clearMessage(document.getElementById("academicRecordsMessage"));
     clearMessage(marksMessage);
     clearMessage(facultyAttendanceMessage);
@@ -435,15 +438,8 @@ attendanceButton?.addEventListener("click", async () => {
         return;
     }
 
-    if (["Faculty", "Administrator"].includes(currentUser.role)) {
-        showView("facultyView");
-        await initializeFacultyAttendance();
-        return;
-    }
-
     if (currentUser.role !== "Student") {
-        container.textContent =
-            "Student attendance is available to student accounts.";
+        container.textContent = "Student attendance is available to student accounts.";
         return;
     }
 
@@ -453,26 +449,128 @@ attendanceButton?.addEventListener("click", async () => {
 
     try {
         const result = await api("/api/attendance/my");
-
         const records = Array.isArray(result)
             ? result
             : result.attendance || result.records || [];
 
-        renderTable(
-            container,
-            [
-                { key: "attendance_date", label: "Date" },
-                { key: "subject_id", label: "Subject ID" },
-                { key: "status", label: "Status" }
-            ],
-            records
-        );
+        renderTable(container, [
+            { key: "attendance_date", label: "Date" },
+            { key: "subject_display", label: "Subject" },
+            { key: "status", label: "Status" }
+        ], records.map((record) => ({
+            ...record,
+            subject_display:
+                [record.subject_code, record.subject_name]
+                    .filter(Boolean)
+                    .join(" — ") ||
+                String(record.subject_id ?? "—")
+        })));
     } catch (error) {
         container.textContent =
             error.message || "Unable to load attendance records.";
     } finally {
         attendanceButton.disabled = false;
         attendanceButton.textContent = "Load attendance";
+    }
+});
+
+/* FR-014: Faculty subject-wise marks summary */
+const summarySubject = document.getElementById("summarySubject");
+const loadSubjectSummaryButton = document.getElementById("loadSubjectSummary");
+const subjectSummaryMessage = document.getElementById("subjectSummaryMessage");
+const subjectSummaryResults = document.getElementById("subjectSummaryResults");
+
+loadSubjectSummaryButton?.addEventListener("click", async () => {
+    if (!summarySubject || !subjectSummaryResults) return;
+
+    const subjectId = summarySubject.value;
+
+    if (!subjectId) {
+        if (subjectSummaryMessage) {
+            subjectSummaryMessage.textContent = "Please select a subject.";
+        }
+        subjectSummaryResults.replaceChildren();
+        return;
+    }
+
+    loadSubjectSummaryButton.disabled = true;
+    loadSubjectSummaryButton.textContent = "Loading...";
+    subjectSummaryResults.textContent = "Loading subject marks summary...";
+
+    if (subjectSummaryMessage) {
+        subjectSummaryMessage.textContent = "";
+    }
+
+    try {
+        const result = await api(
+            `/api/marks/summary?subject_id=${encodeURIComponent(subjectId)}`
+        );
+
+        const students = Array.isArray(result.students) ? result.students : [];
+        const rows = [];
+
+        students.forEach((student) => {
+            const studentName = [
+                student.first_name,
+                student.last_name
+            ].filter(Boolean).join(" ");
+
+            if (!student.assessments?.length) {
+                rows.push({
+                    registration_number: student.registration_number,
+                    student_name: studentName || "—",
+                    assessment_name: "No marks recorded",
+                    marks_obtained: "—",
+                    max_marks: "—"
+                });
+                return;
+            }
+
+            student.assessments.forEach((assessment) => {
+                rows.push({
+                    registration_number: student.registration_number,
+                    student_name: studentName || "—",
+                    assessment_name: assessment.assessment_name,
+                    marks_obtained: assessment.marks_obtained,
+                    max_marks: assessment.max_marks
+                });
+            });
+        });
+
+        subjectSummaryResults.replaceChildren();
+
+        const heading = document.createElement("h4");
+        heading.textContent =
+            `${result.subject.subject_code} — ${result.subject.subject_name}`;
+        subjectSummaryResults.appendChild(heading);
+
+        if (subjectSummaryMessage) {
+            subjectSummaryMessage.textContent = result.message || "";
+        }
+
+        if (rows.length === 0) {
+            const emptyMessage = document.createElement("p");
+            emptyMessage.textContent = "No students are enrolled in this subject.";
+            subjectSummaryResults.appendChild(emptyMessage);
+        } else {
+            renderTable(subjectSummaryResults, [
+                { key: "registration_number", label: "Registration Number" },
+                { key: "student_name", label: "Student Name" },
+                { key: "assessment_name", label: "Assessment" },
+                { key: "marks_obtained", label: "Marks Obtained" },
+                { key: "max_marks", label: "Maximum Marks" }
+            ], rows);
+        }
+    } catch (error) {
+        subjectSummaryResults.textContent =
+            error.message || "Unable to load subject marks summary.";
+
+        if (subjectSummaryMessage) {
+            subjectSummaryMessage.textContent = "Failed to load summary.";
+        }
+    } finally {
+        loadSubjectSummaryButton.disabled = false;
+        loadSubjectSummaryButton.textContent = "View Summary";
     }
 });
 
@@ -1354,6 +1452,7 @@ academicRecordsButton?.addEventListener("click", async () => {
 
     const semesterValue = semesterSelect.value;
     const semester = Number(semesterValue);
+
     if (
         !semesterValue ||
         !Number.isInteger(semester) ||
