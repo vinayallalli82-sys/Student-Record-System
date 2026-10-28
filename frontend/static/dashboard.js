@@ -86,6 +86,7 @@ function showView(viewId) {
         "attendanceView",
         "gpaView",
         "academicRecordsView",
+        "marksSummaryView",
         "facultyView"
     ].forEach((id) => {
         const section = document.getElementById(id);
@@ -192,6 +193,7 @@ function renderAcademicRecords(container, subjects) {
 
         const heading = document.createElement("h3");
         heading.textContent =
+            `Subject ID: ${subject.subject_id ?? "—"} — ` +
             `${subject.subject_code || "Subject"} — ` +
             `${subject.subject_name || "Unnamed subject"}`;
         card.appendChild(heading);
@@ -305,6 +307,9 @@ function openDashboard(user) {
     document.getElementById("academicRecordsNav")
         ?.classList.toggle("hidden", !isStudent);
 
+    document.getElementById("marksSummaryNav")
+        ?.classList.toggle("hidden", !isStudent);
+
     document.getElementById("facultyNav")
         ?.classList.toggle("hidden", !isFaculty);
 
@@ -332,6 +337,7 @@ function closeDashboard(message = "") {
         "attendanceResults",
         "gpaResults",
         "academicRecordsResults",
+        "studentMarksSummaryResults",
         "marksResults",
         "facultyAttendanceResults"
     ].forEach((id) => {
@@ -339,6 +345,7 @@ function closeDashboard(message = "") {
     });
 
     clearMessage(document.getElementById("academicRecordsMessage"));
+    clearMessage(studentMarksSummaryMessage);
     clearMessage(marksMessage);
     clearMessage(facultyAttendanceMessage);
 
@@ -453,18 +460,43 @@ attendanceButton?.addEventListener("click", async () => {
             ? result
             : result.attendance || result.records || [];
 
+        // Load subjects separately so attendance still displays if the lookup fails.
+        const subjects = await api("/api/subjects").catch(() => []);
+        const subjectsById = new Map(
+            (Array.isArray(subjects) ? subjects : []).map((subject) => [
+                String(subject.subject_id ?? subject.id),
+                subject
+            ])
+        );
+
         renderTable(container, [
             { key: "attendance_date", label: "Date" },
-            { key: "subject_display", label: "Subject" },
+            { key: "subject_id", label: "Subject ID" },
+            { key: "subject_code", label: "Subject Code" },
+            { key: "subject_name", label: "Subject Name" },
             { key: "status", label: "Status" }
-        ], records.map((record) => ({
-            ...record,
-            subject_display:
-                [record.subject_code, record.subject_name]
-                    .filter(Boolean)
-                    .join(" — ") ||
-                String(record.subject_id ?? "—")
-        })));
+        ], records.map((record) => {
+            const subjectId = record.subject_id ?? record.subject?.subject_id ?? record.id;
+            const subject = subjectsById.get(String(subjectId)) || {};
+
+            return {
+                ...record,
+                subject_id: subjectId ?? "—",
+                subject_code:
+                    record.subject_code ??
+                    record.subject?.subject_code ??
+                    subject.subject_code ??
+                    subject.code ??
+                    "—",
+                subject_name:
+                    record.subject_name ??
+                    record.subject?.subject_name ??
+                    record.name ??
+                    subject.subject_name ??
+                    subject.name ??
+                    "—"
+            };
+        }));
     } catch (error) {
         container.textContent =
             error.message || "Unable to load attendance records.";
@@ -541,7 +573,9 @@ loadSubjectSummaryButton?.addEventListener("click", async () => {
 
         const heading = document.createElement("h4");
         heading.textContent =
-            `${result.subject.subject_code} — ${result.subject.subject_name}`;
+            `Subject ID: ${result.subject.subject_id ?? "—"} — ` +
+            `${result.subject.subject_code || "—"} — ` +
+            `${result.subject.subject_name || "—"}`;
         subjectSummaryResults.appendChild(heading);
 
         if (subjectSummaryMessage) {
@@ -642,17 +676,45 @@ gpaButton?.addEventListener("click", async () => {
             [];
 
         if (Array.isArray(subjects) && subjects.length > 0) {
+            // Some GPA responses omit subject_id. Resolve it from /api/subjects
+            // using the subject code, without changing the GPA calculation.
+            let subjectCatalog = [];
+            try {
+                const catalogResult = await api("/api/subjects");
+                subjectCatalog = Array.isArray(catalogResult)
+                    ? catalogResult
+                    : catalogResult.subjects || catalogResult.data || [];
+            } catch (catalogError) {
+                console.warn("Could not load subject IDs for GPA table:", catalogError);
+            }
+
+            const subjectsWithIds = subjects.map((item) => {
+                const code = item.subject_code ?? item.code ?? item.subject?.subject_code;
+                const matchedSubject = subjectCatalog.find((subject) =>
+                    String(subject.subject_code ?? subject.code ?? "").toLowerCase() ===
+                    String(code ?? "").toLowerCase()
+                );
+                return {
+                    ...item,
+                    subject_id:
+                        item.subject_id ?? item.subject?.subject_id ?? item.id ??
+                        matchedSubject?.subject_id ?? matchedSubject?.id ?? "—"
+                };
+            });
+
             const tableContainer = document.createElement("div");
 
             renderTable(
                 tableContainer,
                 [
-                    { key: "subject_name", label: "Subject" },
+                    { key: "subject_id", label: "Subject ID" },
+                    { key: "subject_code", label: "Subject Code" },
+                    { key: "subject_name", label: "Subject Name" },
                     { key: "credits", label: "Credits" },
                     { key: "grade", label: "Grade" },
                     { key: "grade_point", label: "Grade Point" }
                 ],
-                subjects
+                subjectsWithIds
             );
 
             container.appendChild(tableContainer);
@@ -727,7 +789,7 @@ async function loadAttendanceSubjects() {
     subjects.forEach((subject) => {
         attendanceSubject.add(
             new Option(
-                `${subject.subject_code} — ${subject.subject_name}`,
+                `${subject.subject_id} — ${subject.subject_code} — ${subject.subject_name}`,
                 String(subject.subject_id)
             )
         );
@@ -1084,7 +1146,7 @@ async function loadMarkSubjects() {
     subjects.forEach((subject) => {
         marksSubject.add(
             new Option(
-                `${subject.subject_code} — ${subject.subject_name}`,
+                `${subject.subject_id} — ${subject.subject_code} — ${subject.subject_name}`,
                 String(subject.subject_id)
             )
         );
@@ -1323,6 +1385,38 @@ resetMarksButton?.addEventListener("click", resetMarksForm);
 
 loadMarksButton?.addEventListener("click", loadSavedMarks);
 
+/* FR-014: Populate the faculty subject-wise summary dropdown. */
+async function initializeFacultyMarksSummary() {
+    if (!summarySubject) return;
+
+    const selectedSubject = summarySubject.value;
+    const subjects = await api("/api/subjects");
+
+    if (!Array.isArray(subjects)) {
+        throw new Error("The server returned an invalid subjects list.");
+    }
+
+    summarySubject.replaceChildren(
+        new Option("Choose a subject", "")
+    );
+
+    subjects.forEach((subject) => {
+        summarySubject.add(
+            new Option(
+                `ID: ${subject.subject_id} — ` +
+                `${subject.subject_code} — ${subject.subject_name}`,
+                String(subject.subject_id)
+            )
+        );
+    });
+
+    if (subjects.some(
+        (subject) => String(subject.subject_id) === selectedSubject
+    )) {
+        summarySubject.value = selectedSubject;
+    }
+}
+
 /* Initialize the faculty marks view when it is opened */
 async function initializeFacultyMarks() {
     if (!currentUser || currentUser.role !== "Faculty") {
@@ -1340,6 +1434,7 @@ async function initializeFacultyMarks() {
         await loadMarkSubjects();
         await loadMarkStudents();
         await loadSavedMarks();
+        await initializeFacultyMarksSummary();
     } catch (error) {
         showMessage(
             marksMessage,
@@ -1507,6 +1602,116 @@ academicRecordsButton?.addEventListener("click", async () => {
     } finally {
         academicRecordsButton.disabled = false;
         academicRecordsButton.textContent = "View Academic Records";
+    }
+});
+
+/* FR-014: Students can view only their own marks by subject. */
+const studentMarksSummaryButton =
+    document.getElementById("loadStudentMarksSummary");
+const studentMarksSummarySemester =
+    document.getElementById("marksSummarySemester");
+const studentMarksSummaryMessage =
+    document.getElementById("studentMarksSummaryMessage");
+const studentMarksSummaryResults =
+    document.getElementById("studentMarksSummaryResults");
+
+studentMarksSummaryButton?.addEventListener("click", async () => {
+    if (!currentUser || currentUser.role !== "Student") {
+        showMessage(
+            studentMarksSummaryMessage,
+            "This summary is available only to student accounts.",
+            true
+        );
+        return;
+    }
+
+    const semesterValue = studentMarksSummarySemester?.value || "";
+    const semester = Number(semesterValue);
+
+    if (
+        !semesterValue ||
+        !Number.isInteger(semester) ||
+        semester < 1 ||
+        semester > 8
+    ) {
+        showMessage(
+            studentMarksSummaryMessage,
+            "Choose a semester from 1 to 8.",
+            true
+        );
+        return;
+    }
+
+    studentMarksSummaryButton.disabled = true;
+    studentMarksSummaryButton.textContent = "Loading...";
+    studentMarksSummaryResults?.replaceChildren();
+    showMessage(studentMarksSummaryMessage, "Loading your marks...");
+
+    try {
+        // The server derives the student from the authenticated session.
+        const result = await api(
+            `/api/academic-records/my?semester=${semester}`
+        );
+
+        if (!result || !Array.isArray(result.subjects)) {
+            throw new Error("The server returned an invalid marks summary.");
+        }
+
+        if (result.subjects.length === 0) {
+            studentMarksSummaryResults.textContent =
+                "No subjects or marks are available for this semester.";
+        } else {
+            result.subjects.forEach((subject) => {
+                const card = document.createElement("article");
+                card.className = "academic-subject";
+
+                const heading = document.createElement("h3");
+                heading.textContent =
+                    `Subject ID: ${subject.subject_id ?? "—"} — ` +
+                    `${subject.subject_code || "—"} — ` +
+                    `${subject.subject_name || "Unnamed subject"}`;
+                card.appendChild(heading);
+
+                const assessments = Array.isArray(subject.assessments)
+                    ? subject.assessments
+                    : [];
+
+                if (assessments.length === 0) {
+                    const empty = document.createElement("p");
+                    empty.textContent = "No marks recorded yet.";
+                    card.appendChild(empty);
+                } else {
+                    const table = document.createElement("div");
+                    renderTable(
+                        table,
+                        [
+                            { key: "assessment_name", label: "Assessment" },
+                            { key: "marks_obtained", label: "Marks Obtained" },
+                            { key: "max_marks", label: "Maximum Marks" }
+                        ],
+                        assessments
+                    );
+                    card.appendChild(table);
+                }
+
+                studentMarksSummaryResults.appendChild(card);
+            });
+        }
+
+        showMessage(
+            studentMarksSummaryMessage,
+            result.message || "Your subject-wise marks summary is ready."
+        );
+    } catch (error) {
+        studentMarksSummaryResults?.replaceChildren();
+        showMessage(
+            studentMarksSummaryMessage,
+            error.message || "Unable to load your marks summary.",
+            true
+        );
+    } finally {
+        studentMarksSummaryButton.disabled = false;
+        studentMarksSummaryButton.textContent = "View My Marks";
     }
 });
 
