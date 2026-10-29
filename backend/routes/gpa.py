@@ -1,4 +1,5 @@
 """FR-004: Semester GPA API."""
+
 from flask import Blueprint, jsonify
 from sqlalchemy import text
 
@@ -13,6 +14,7 @@ gpa_bp = Blueprint("gpa", __name__)
     methods=["GET"],
 )
 def get_semester_gpa(student_id, semester_number):
+    """Return a student's GPA and subject-wise grade details."""
     student = db.session.execute(
         text("SELECT student_id FROM students WHERE student_id = :sid"),
         {"sid": student_id},
@@ -21,40 +23,51 @@ def get_semester_gpa(student_id, semester_number):
         return jsonify({"status": "error", "message": "Student not found"}), 404
 
     semester = db.session.execute(
-        text("SELECT semester_id FROM semesters WHERE semester_number = :n"),
-        {"n": semester_number},
+        text("SELECT semester_id FROM semesters WHERE semester_number = :number"),
+        {"number": semester_number},
     ).first()
     if semester is None:
         return jsonify({"status": "error", "message": "Semester not found"}), 404
 
-    # One row per subject in the semester. Multiple assessments per subject
-    # are combined: total marks obtained / total maximum marks.
     rows = db.session.execute(
-        text("""
-            SELECT s.subject_code,
-                   s.credits,
-                   SUM(m.marks_obtained) AS total_obtained,
-                   SUM(m.max_marks)      AS total_max
+        text(
+            """
+            SELECT
+                s.subject_id,
+                s.subject_code,
+                s.subject_name,
+                s.credits,
+                SUM(m.marks_obtained) AS total_obtained,
+                SUM(m.max_marks) AS total_max
             FROM subjects s
             LEFT JOIN marks m
-                   ON m.subject_id = s.subject_id AND m.student_id = :sid
+                ON m.subject_id = s.subject_id
+                AND m.student_id = :sid
             WHERE s.semester_id = :semid
-            GROUP BY s.subject_id, s.subject_code, s.credits
+            GROUP BY
+                s.subject_id,
+                s.subject_code,
+                s.subject_name,
+                s.credits
             ORDER BY s.subject_code
-        """),
+            """
+        ),
         {"sid": student_id, "semid": semester.semester_id},
     ).mappings().all()
 
-    graded, missing = [], []
-    for r in rows:
-        if r["total_max"] is None:
-            missing.append(r["subject_code"])
+    graded = []
+    missing = []
+    for row in rows:
+        if row["total_max"] is None:
+            missing.append(row["subject_code"])
         else:
             graded.append({
-                "code": r["subject_code"],
-                "marks": r["total_obtained"],
-                "max_marks": r["total_max"],
-                "credits": r["credits"],
+                "subject_id": row["subject_id"],
+                "code": row["subject_code"],
+                "subject_name": row["subject_name"],
+                "marks": row["total_obtained"],
+                "max_marks": row["total_max"],
+                "credits": row["credits"],
             })
 
     if not graded:
@@ -65,8 +78,15 @@ def get_semester_gpa(student_id, semester_number):
 
     try:
         result = calculate_semester_gpa(graded)
-    except ValueError as e:
-        return jsonify({"status": "error", "message": str(e)}), 422
+    except ValueError as error:
+        return jsonify({"status": "error", "message": str(error)}), 422
+
+    result_subjects = result["subjects"]
+    names_by_code = {row["subject_code"]: row["subject_name"] for row in rows}
+    for subject in result_subjects:
+        code = subject.get("code") or subject.get("subject_code")
+        if code in names_by_code:
+            subject["subject_name"] = names_by_code[code]
 
     return jsonify({
         "status": "success",
@@ -74,6 +94,6 @@ def get_semester_gpa(student_id, semester_number):
         "semester": semester_number,
         "gpa": result["gpa"],
         "total_credits": result["total_credits"],
-        "subjects": result["subjects"],
+        "subjects": result_subjects,
         "subjects_without_marks": missing,
     })
