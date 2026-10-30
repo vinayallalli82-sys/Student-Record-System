@@ -1,4 +1,3 @@
-
 from flask import Flask, jsonify, render_template
 from flask_login import LoginManager
 from flask_wtf.csrf import CSRFError, CSRFProtect
@@ -20,6 +19,7 @@ from backend.routes.subjects import subjects_bp
 from backend.routes.attendance import attendance_bp
 from backend.routes.auth import auth_bp
 from backend.routes.gpa import gpa_bp
+from backend.routes.cgpa import cgpa_bp
 from backend.routes.academic_records import academic_records_bp
 from backend.routes.students import students_bp
 from backend.routes.backups import backups_bp
@@ -69,6 +69,7 @@ def create_app():
     app.register_blueprint(attendance_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(gpa_bp)
+    app.register_blueprint(cgpa_bp)
     app.register_blueprint(academic_records_bp)
     app.register_blueprint(students_bp)
     app.register_blueprint(backups_bp)
@@ -94,13 +95,11 @@ def create_app():
                 "status": "success",
             })
         except Exception:
-            app.logger.exception(
-                "Database connection check failed"
-            )
+            app.logger.exception("Database health check failed.")
             return jsonify({
-                "database": "unavailable",
+                "database": "disconnected",
                 "status": "error",
-            }), 503
+            }), 500
 
     return app
 
