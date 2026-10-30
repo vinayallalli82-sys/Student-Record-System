@@ -25,7 +25,6 @@ from backend.routes.students import students_bp
 from backend.routes.backups import backups_bp
 from backend.routes.admin import admin_bp
 
-
 csrf = CSRFProtect()
 
 
@@ -35,6 +34,7 @@ def create_app():
         template_folder="../frontend/templates",
         static_folder="../frontend/static",
     )
+
     app.config.from_object(Config)
 
     db.init_app(app)
@@ -63,7 +63,7 @@ def create_app():
             "message": error.description,
         }), 400
 
-    # Register all application API blueprints.
+    # Register blueprints
     app.register_blueprint(marks_bp)
     app.register_blueprint(subjects_bp)
     app.register_blueprint(attendance_bp)
@@ -75,27 +75,47 @@ def create_app():
     app.register_blueprint(backups_bp)
     app.register_blueprint(admin_bp)
 
-    # Serve the dashboard at the application home page.
     @app.route("/")
     def home():
         return render_template("dashboard.html")
 
+    # Application and database availability check
     @app.route("/api/health")
     def health():
-        return jsonify({
-            "status": "healthy"
-        })
+        try:
+            db.session.execute(text("SELECT 1"))
 
+            return jsonify({
+                "status": "healthy",
+                "database": "connected"
+            }), 200
+
+        except Exception:
+            app.logger.exception(
+                "Application health check failed."
+            )
+
+            return jsonify({
+                "status": "unhealthy",
+                "database": "disconnected"
+            }), 503
+
+    # Separate database health check
     @app.route("/api/db-health")
     def database_health():
         try:
             db.session.execute(text("SELECT 1"))
+
             return jsonify({
                 "database": "connected",
                 "status": "success",
-            })
+            }), 200
+
         except Exception:
-            app.logger.exception("Database health check failed.")
+            app.logger.exception(
+                "Database health check failed."
+            )
+
             return jsonify({
                 "database": "disconnected",
                 "status": "error",
