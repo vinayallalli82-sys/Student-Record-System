@@ -1,7 +1,8 @@
-
 Flask
 Flask-SQLAlchemy
 PyMySQL
 python-dotenv
 Flask-Login
 Flask-WTF
+requests
+tzdata

@@ -1,3 +1,4 @@
+
 from flask import Flask, jsonify, render_template
 from flask_login import LoginManager
 from flask_wtf.csrf import CSRFError, CSRFProtect
@@ -6,13 +7,6 @@ from sqlalchemy import text
 from backend.config import Config
 from backend.extensions import db
 from backend.models.user import User
-from backend.models.student import Student
-from backend.models.semester import Semester
-from backend.models.subject import Subject
-from backend.models.student_subject import StudentSubject
-from backend.models.mark import Mark
-from backend.models.attendance import Attendance
-from backend.models.faculty_subject import FacultySubject
 
 from backend.routes.marks import marks_bp
 from backend.routes.subjects import subjects_bp
@@ -24,6 +18,8 @@ from backend.routes.academic_records import academic_records_bp
 from backend.routes.students import students_bp
 from backend.routes.backups import backups_bp
 from backend.routes.admin import admin_bp
+
+from backend.services.availability_service import calculate_availability
 
 csrf = CSRFProtect()
 
@@ -63,7 +59,6 @@ def create_app():
             "message": error.description,
         }), 400
 
-    # Register blueprints
     app.register_blueprint(marks_bp)
     app.register_blueprint(subjects_bp)
     app.register_blueprint(attendance_bp)
@@ -79,47 +74,39 @@ def create_app():
     def home():
         return render_template("dashboard.html")
 
-    # Application and database availability check
     @app.route("/api/health")
     def health():
         try:
             db.session.execute(text("SELECT 1"))
-
             return jsonify({
                 "status": "healthy",
                 "database": "connected"
             }), 200
-
         except Exception:
-            app.logger.exception(
-                "Application health check failed."
-            )
-
+            app.logger.exception("Application health check failed.")
             return jsonify({
                 "status": "unhealthy",
                 "database": "disconnected"
             }), 503
 
-    # Separate database health check
     @app.route("/api/db-health")
     def database_health():
         try:
             db.session.execute(text("SELECT 1"))
-
             return jsonify({
                 "database": "connected",
                 "status": "success",
             }), 200
-
         except Exception:
-            app.logger.exception(
-                "Database health check failed."
-            )
-
+            app.logger.exception("Database health check failed.")
             return jsonify({
                 "database": "disconnected",
                 "status": "error",
             }), 500
+
+    @app.route("/api/availability")
+    def availability_report():
+        return jsonify(calculate_availability()), 200
 
     return app
 
