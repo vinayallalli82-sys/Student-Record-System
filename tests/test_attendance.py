@@ -363,3 +363,76 @@ def test_invalid_login_credentials_are_rejected(client):
         "WrongPassword123!",
     )
     assert response.status_code == 401
+
+
+def test_attendance_filter_by_date_range(client, app):
+    faculty_login(client)
+    ids = app.test_ids
+
+    for attendance_date, status in [
+        ("2026-10-20", "Present"),
+        ("2026-10-23", "Absent"),
+        ("2026-10-27", "Present"),
+    ]:
+        response = client.post(
+            "/api/attendance",
+            json=attendance_payload(
+                ids, date=attendance_date, status=status
+            ),
+            headers=csrf_headers(client),
+        )
+        assert response.status_code == 201
+
+    response = client.get(
+        "/api/attendance?start_date=2026-10-21&end_date=2026-10-25"
+    )
+
+    assert response.status_code == 200
+    records = response.get_json()
+    assert len(records) == 1
+    assert records[0]["attendance_date"] == "2026-10-23"
+
+
+def test_attendance_filter_by_subject_and_date_range(client, app):
+    faculty_login(client)
+    ids = app.test_ids
+
+    created = client.post(
+        "/api/attendance",
+        json=attendance_payload(ids, date="2026-10-23"),
+        headers=csrf_headers(client),
+    )
+    assert created.status_code == 201
+
+    response = client.get(
+        f"/api/attendance?subject_id={ids['subject']}"
+        "&start_date=2026-10-20&end_date=2026-10-25"
+    )
+
+    assert response.status_code == 200
+    records = response.get_json()
+    assert len(records) == 1
+    assert records[0]["subject_id"] == ids["subject"]
+
+
+def test_attendance_filter_rejects_reversed_date_range(client):
+    faculty_login(client)
+
+    response = client.get(
+        "/api/attendance?start_date=2026-10-27&end_date=2026-10-20"
+    )
+
+    assert response.status_code == 400
+    assert "start_date must not be after end_date" in response.get_json()["error"]
+
+
+def test_attendance_filter_returns_empty_list_when_no_match(client):
+    faculty_login(client)
+
+    response = client.get(
+        "/api/attendance?start_date=2026-11-01&end_date=2026-11-05"
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == []
+

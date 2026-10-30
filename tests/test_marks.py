@@ -160,3 +160,26 @@ def test_updating_nonexistent_mark_returns_404(client, app):
         headers=csrf_headers(client),
     )
     assert response.status_code == 404
+def test_faculty_can_list_saved_marks(client, app):
+    faculty_login(client)
+    ids = app.test_ids
+
+    create_response = client.post(
+        "/api/marks/",
+        json=marks_payload(ids, obtained=35, maximum=50),
+        headers=csrf_headers(client),
+    )
+    assert create_response.status_code == 201
+
+    response = client.get("/api/marks/")
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert isinstance(data, list)
+    assert len(data) >= 1
+    assert any(
+        mark["student_id"] == ids["student_a"]
+        and mark["subject_id"] == ids["subject"]
+        and mark["assessment_name"] == "ISA 1"
+        for mark in data
+    )
