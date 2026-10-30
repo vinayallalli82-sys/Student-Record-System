@@ -7,6 +7,13 @@ from sqlalchemy import text
 from backend.config import Config
 from backend.extensions import db
 from backend.models.user import User
+from backend.models.student import Student
+from backend.models.semester import Semester
+from backend.models.subject import Subject
+from backend.models.student_subject import StudentSubject
+from backend.models.mark import Mark
+from backend.models.attendance import Attendance
+from backend.models.faculty_subject import FacultySubject
 
 from backend.routes.marks import marks_bp
 from backend.routes.subjects import subjects_bp
@@ -16,6 +23,7 @@ from backend.routes.gpa import gpa_bp
 from backend.routes.academic_records import academic_records_bp
 from backend.routes.students import students_bp
 from backend.routes.backups import backups_bp
+from backend.routes.admin import admin_bp
 
 
 csrf = CSRFProtect()
@@ -64,6 +72,7 @@ def create_app():
     app.register_blueprint(academic_records_bp)
     app.register_blueprint(students_bp)
     app.register_blueprint(backups_bp)
+    app.register_blueprint(admin_bp)
 
     # Serve the dashboard at the application home page.
     @app.route("/")

@@ -1,5 +1,5 @@
 
-"""Marks management and FR-014 subject-wise marks summary."""
+""""Marks management and FR-014 subject-wise marks summary."""
 
 from decimal import Decimal, InvalidOperation
 from functools import wraps
@@ -13,10 +13,11 @@ from backend.models.mark import Mark
 from backend.models.student import Student
 from backend.models.subject import Subject
 from backend.models.student_subject import StudentSubject
+from backend.models.faculty_subject import FacultySubject
+from backend.permissions import subject_permission_error
 
 
 marks_bp = Blueprint("marks", __name__, url_prefix="/api/marks")
-
 
 def faculty_required(view_function):
     """Allow only authenticated faculty to manage and view marks."""
@@ -24,8 +25,8 @@ def faculty_required(view_function):
     @wraps(view_function)
     @login_required
     def wrapped(*args, **kwargs):
-        if current_user.role != "Faculty":
-            return jsonify({"error": "Faculty access required."}), 403
+        if current_user.role not in ("Faculty", "Administrator"):
+            return jsonify({"error": "Faculty or Administrator access required."}), 403
 
         return view_function(*args, **kwargs)
 
@@ -166,6 +167,11 @@ def list_marks():
         .join(Subject, Mark.subject_id == Subject.subject_id)
     )
 
+    if current_user.role == "Faculty":
+        query = query.join(
+            FacultySubject, FacultySubject.subject_id == Mark.subject_id
+        ).filter(FacultySubject.faculty_id == current_user.user_id)
+
     if student_id is not None:
         if student_id <= 0:
             return jsonify({"error": "student_id must be positive."}), 400
@@ -173,6 +179,9 @@ def list_marks():
         query = query.filter(Mark.student_id == student_id)
 
     if subject_id is not None:
+        permission_error = subject_permission_error(subject_id)
+        if permission_error:
+            return permission_error
         if subject_id <= 0:
             return jsonify({"error": "subject_id must be positive."}), 400
 
@@ -211,6 +220,10 @@ def subject_marks_summary():
 
     if subject is None:
         return jsonify({"error": "Subject not found."}), 404
+
+    permission_error = subject_permission_error(subject_id)
+    if permission_error:
+        return permission_error
 
     # Start with enrollments so students without marks are included.
     rows = (
@@ -286,6 +299,10 @@ def create_mark():
     if error:
         return jsonify({"error": error}), 400
 
+    permission_error = subject_permission_error(data["subject_id"])
+    if permission_error:
+        return permission_error
+
     enrollment_error = validate_enrollment(
         data["student_id"],
         data["subject_id"],
@@ -336,6 +353,14 @@ def update_mark(mark_id):
 
     if mark is None:
         return jsonify({"error": "Marks record not found."}), 404
+
+    permission_error = subject_permission_error(mark.subject_id)
+    if permission_error:
+        return permission_error
+
+    permission_error = subject_permission_error(data["subject_id"])
+    if permission_error:
+        return permission_error
 
     enrollment_error = validate_enrollment(
         data["student_id"],

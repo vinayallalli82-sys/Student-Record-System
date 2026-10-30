@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from backend.extensions import db
 from backend.models.student import Student
+from backend.permissions import can_access_student_for_any_assigned_subject
 
 
 students_bp = Blueprint(
@@ -22,8 +23,8 @@ def faculty_required(view_function):
     @wraps(view_function)
     @login_required
     def wrapped(*args, **kwargs):
-        if current_user.role != "Faculty":
-            return jsonify({"error": "Faculty access required."}), 403
+        if current_user.role not in ("Faculty", "Administrator"):
+            return jsonify({"error": "Faculty or Administrator access required."}), 403
 
         return view_function(*args, **kwargs)
 
@@ -41,6 +42,9 @@ def get_student_profile(student_id):
 
     if student is None:
         return jsonify({"error": "Student not found."}), 404
+
+    if current_user.role == "Faculty" and not can_access_student_for_any_assigned_subject(student_id):
+        return jsonify({"error": "You are not assigned to this student."}), 403
 
     return jsonify({
         "student_id": student.student_id,

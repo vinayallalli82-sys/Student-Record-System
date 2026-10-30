@@ -87,7 +87,8 @@ function showView(viewId) {
         "gpaView",
         "academicRecordsView",
         "marksSummaryView",
-        "facultyView"
+        "facultyView",
+        "adminView"
     ].forEach((id) => {
         const section = document.getElementById(id);
 
@@ -298,8 +299,7 @@ function openDashboard(user) {
     }
 
     const isStudent = user.role === "Student";
-    const isFaculty =
-        user.role === "Faculty" || user.role === "Administrator";
+    const isFaculty = user.role === "Faculty";
 
     document.getElementById("gpaNav")
         ?.classList.toggle("hidden", !isStudent);
@@ -312,13 +312,21 @@ function openDashboard(user) {
 
     document.getElementById("facultyNav")
         ?.classList.toggle("hidden", !isFaculty);
+    const isAdministrator = user.role === "Administrator";
+    document.getElementById("adminNav")
+        ?.classList.toggle("hidden", !isAdministrator);
+    document.getElementById("attendanceNav")
+        ?.classList.toggle("hidden", isAdministrator);
 
     document.getElementById("facultyMarksSection")
         ?.classList.toggle("hidden", user.role !== "Faculty");
 
     clearMessage(loginMessage);
     showMessage(globalMessage, "Signed in successfully.");
-    showView("attendanceView");
+    showView(isAdministrator ? "adminView" : "attendanceView");
+    if (isAdministrator) {
+        loadAdminData().catch((error) => showMessage(globalMessage, error.message, true));
+    }
 }
 
 /* Return to the login screen */
@@ -980,7 +988,7 @@ async function initializeFacultyAttendance() {
         !["Faculty", "Administrator"].includes(currentUser.role)) {
         showMessage(
             globalMessage,
-            "Faculty tools require a faculty or administrator account.",
+            "Faculty tools require a faculty account.",
             true
         );
         return;
@@ -1026,7 +1034,7 @@ saveAttendanceButton?.addEventListener("click", async () => {
         !["Faculty", "Administrator"].includes(currentUser.role)) {
         showMessage(
             facultyAttendanceMessage,
-            "Faculty tools require a faculty or administrator account.",
+            "Faculty tools require a faculty account.",
             true
         );
         return;
@@ -1444,6 +1452,128 @@ async function initializeFacultyMarks() {
     }
 }
 
+/* ADMIN-002: account and faculty assignment management UI */
+function makeAdminElement(tag, text, className) {
+    const element = document.createElement(tag);
+    if (text !== undefined && text !== null) element.textContent = text;
+    if (className) element.className = className;
+    return element;
+}
+
+async function loadAdminData() {
+    if (!currentUser || currentUser.role !== "Administrator") return;
+    const [users, subjects, assignments] = await Promise.all([
+        api("/api/admin/users"),
+        api("/api/subjects"),
+        api("/api/admin/faculty-assignments")
+    ]);
+
+    const facultySelect = document.getElementById("adminFacultySelect");
+    const subjectSelect = document.getElementById("adminSubjectSelect");
+    facultySelect.replaceChildren(new Option("Choose faculty", ""));
+    subjectSelect.replaceChildren(new Option("Choose subject", ""));
+    users.filter((user) => user.role === "Faculty" && user.is_active).forEach((user) => {
+        facultySelect.add(new Option(user.email, String(user.user_id)));
+    });
+    subjects.forEach((subject) => {
+        subjectSelect.add(new Option(`${subject.subject_code} — ${subject.subject_name}`, String(subject.subject_id)));
+    });
+
+    const usersContainer = document.getElementById("adminUsersResults");
+    usersContainer.replaceChildren();
+    if (!users.length) usersContainer.append(makeAdminElement("p", "No accounts found."));
+    users.forEach((user) => {
+        const row = makeAdminElement("div", null, "admin-user-row");
+        row.append(makeAdminElement("strong", `${user.email} (ID ${user.user_id})`));
+        const role = document.createElement("select");
+        ["Student", "Faculty", "Administrator"].forEach((value) => role.add(new Option(value, value)));
+        role.value = user.role;
+        role.setAttribute("aria-label", `Role for ${user.email}`);
+        const activeLabel = makeAdminElement("label", " Active ");
+        const active = document.createElement("input");
+        active.type = "checkbox";
+        active.checked = Boolean(user.is_active);
+        active.setAttribute("aria-label", `Active status for ${user.email}`);
+        activeLabel.prepend(active);
+        const save = makeAdminElement("button", "Save changes");
+        save.type = "button";
+        save.addEventListener("click", async () => {
+            try {
+                await api(`/api/admin/users/${user.user_id}`, {
+                    method: "PATCH",
+                    body: JSON.stringify({ role: role.value, is_active: active.checked })
+                });
+                showMessage(document.getElementById("adminAccountMessage"), `Updated ${user.email}.`);
+                await loadAdminData();
+            } catch (error) {
+                showMessage(document.getElementById("adminAccountMessage"), error.message, true);
+            }
+        });
+        row.append(role, activeLabel, save);
+        usersContainer.append(row);
+    });
+
+    const assignmentsContainer = document.getElementById("adminAssignmentsResults");
+    assignmentsContainer.replaceChildren();
+    if (!assignments.length) assignmentsContainer.append(makeAdminElement("p", "No faculty assignments yet."));
+    assignments.forEach((assignment) => {
+        const row = makeAdminElement("div", null, "admin-assignment-row");
+        row.append(makeAdminElement("span", `${assignment.faculty_email} — ${assignment.subject_code}: ${assignment.subject_name}`));
+        const remove = makeAdminElement("button", "Remove assignment", "secondary");
+        remove.type = "button";
+        remove.addEventListener("click", async () => {
+            try {
+                await api(`/api/admin/faculty-assignments/${assignment.faculty_id}/${assignment.subject_id}`, { method: "DELETE" });
+                showMessage(document.getElementById("adminAssignmentMessage"), "Faculty assignment removed.");
+                await loadAdminData();
+            } catch (error) {
+                showMessage(document.getElementById("adminAssignmentMessage"), error.message, true);
+            }
+        });
+        row.append(remove);
+        assignmentsContainer.append(row);
+    });
+}
+
+document.getElementById("adminCreateUserForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+        const user = await api("/api/admin/users", {
+            method: "POST",
+            body: JSON.stringify({
+                email: document.getElementById("adminNewEmail").value,
+                password: document.getElementById("adminNewPassword").value,
+                role: document.getElementById("adminNewRole").value
+            })
+        });
+        event.currentTarget.reset();
+        showMessage(document.getElementById("adminAccountMessage"), `Created ${user.user.email}.`);
+        await loadAdminData();
+    } catch (error) {
+        showMessage(document.getElementById("adminAccountMessage"), error.message, true);
+    }
+});
+
+document.getElementById("adminAssignmentForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+        await api("/api/admin/faculty-assignments", {
+            method: "POST",
+            body: JSON.stringify({
+                faculty_id: Number(document.getElementById("adminFacultySelect").value),
+                subject_id: Number(document.getElementById("adminSubjectSelect").value)
+            })
+        });
+        showMessage(document.getElementById("adminAssignmentMessage"), "Faculty assigned to subject.");
+        await loadAdminData();
+    } catch (error) {
+        showMessage(document.getElementById("adminAssignmentMessage"), error.message, true);
+    }
+});
+
+document.getElementById("refreshAdminUsers")?.addEventListener("click", () => loadAdminData().catch((error) => showMessage(document.getElementById("adminAccountMessage"), error.message, true)));
+document.getElementById("refreshAdminAssignments")?.addEventListener("click", () => loadAdminData().catch((error) => showMessage(document.getElementById("adminAssignmentMessage"), error.message, true)));
+
 /* Navigation with role checks */
 document.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -1453,6 +1583,11 @@ document.querySelectorAll("[data-view]").forEach((button) => {
         }
 
         const requestedViewId = button.dataset.view;
+
+        if (requestedViewId === "adminView" && currentUser.role !== "Administrator") {
+            showMessage(globalMessage, "Administrator tools require an Administrator account.", true);
+            return;
+        }
 
         if (
             ["gpaView", "academicRecordsView"].includes(requestedViewId) &&
@@ -1466,8 +1601,7 @@ document.querySelectorAll("[data-view]").forEach((button) => {
             return;
         }
 
-        const isFaculty =
-            ["Faculty", "Administrator"].includes(currentUser.role);
+        const isFaculty = currentUser.role === "Faculty";
         const viewId =
             requestedViewId === "attendanceView" && isFaculty
                 ? "facultyView"
@@ -1479,7 +1613,7 @@ document.querySelectorAll("[data-view]").forEach((button) => {
         ) {
             showMessage(
                 globalMessage,
-                "Faculty tools require a faculty or administrator account.",
+                "Faculty tools require a faculty account.",
                 true
             );
             return;
@@ -1510,7 +1644,7 @@ document.getElementById("facultyAttendance")
             !["Faculty", "Administrator"].includes(currentUser.role)) {
             showMessage(
                 globalMessage,
-                "Faculty tools require a faculty or administrator account.",
+                "Faculty tools require a faculty account.",
                 true
             );
             return;

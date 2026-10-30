@@ -13,6 +13,8 @@ from backend.models.attendance import Attendance
 from backend.models.student import Student
 from backend.models.student_subject import StudentSubject
 from backend.models.subject import Subject
+from backend.models.faculty_subject import FacultySubject
+from backend.permissions import subject_permission_error
 
 
 attendance_bp = Blueprint(
@@ -91,7 +93,7 @@ def can_view_student(student_id):
 @attendance_bp.get("/students")
 @roles_required("Faculty", "Administrator")
 def list_students():
-    """List only students enrolled in the selected subject."""
+    """List students enrolled in a subject and their attendance status."""
 
     subject_id = request.args.get("subject_id", type=int)
     date_value = request.args.get("date")
@@ -103,6 +105,10 @@ def list_students():
 
     if db.session.get(Subject, subject_id) is None:
         return jsonify({"error": "Subject not found."}), 404
+
+    permission_error = subject_permission_error(subject_id)
+    if permission_error:
+        return permission_error
 
     attendance_date = None
     if date_value is not None:
@@ -177,7 +183,6 @@ def my_attendance():
     ]), 200
 
 
-
 @attendance_bp.get("")
 @roles_required("Faculty", "Administrator")
 def list_attendance():
@@ -185,20 +190,57 @@ def list_attendance():
 
     subject_id = request.args.get("subject_id", type=int)
     date_value = request.args.get("date")
-    start_date_value = request.args.get("start_date")
-    end_date_value = request.args.get("end_date")
+    start_value = request.args.get("start_date")
+    end_value = request.args.get("end_date")
 
-    # Exact date cannot be combined with a date range.
-    if date_value is not None and (
-        start_date_value is not None or end_date_value is not None
-    ):
-        return jsonify({
-            "error": "Use date or a date range, not both."
-        }), 400
-
+    # Always query Attendance, even when joining faculty assignments.
     query = Attendance.query
 
-    # Filter by subject.
+    if current_user.role == "Faculty":
+        query = query.join(
+            FacultySubject,
+            FacultySubject.subject_id == Attendance.subject_id,
+        ).filter(
+            FacultySubject.faculty_id == current_user.user_id
+        )
+
+    # Validate and apply an inclusive date range when supplied.
+    start_date = (
+        parse_date(start_value) if start_value is not None else None
+    )
+    end_date = (
+        parse_date(end_value) if end_value is not None else None
+    )
+
+    if start_value is not None and start_date is None:
+        return jsonify({
+            "error": "start_date must use YYYY-MM-DD format."
+        }), 400
+
+    if end_value is not None and end_date is None:
+        return jsonify({
+            "error": "end_date must use YYYY-MM-DD format."
+        }), 400
+
+    if (
+        start_date is not None
+        and end_date is not None
+        and start_date > end_date
+    ):
+        return jsonify({
+            "error": "start_date must not be after end_date."
+        }), 400
+
+    if start_date is not None:
+        query = query.filter(
+            Attendance.attendance_date >= start_date
+        )
+
+    if end_date is not None:
+        query = query.filter(
+            Attendance.attendance_date <= end_date
+        )
+
     if subject_id is not None:
         if subject_id <= 0:
             return jsonify({
@@ -208,49 +250,27 @@ def list_attendance():
         if db.session.get(Subject, subject_id) is None:
             return jsonify({"error": "Subject not found."}), 404
 
-        query = query.filter_by(subject_id=subject_id)
+        permission_error = subject_permission_error(subject_id)
+        if permission_error:
+            return permission_error
 
-    # Filter by an exact date.
+        # Explicitly filter Attendance, not the joined FacultySubject.
+        query = query.filter(
+            Attendance.subject_id == subject_id
+        )
+
     if date_value is not None:
         attendance_date = parse_date(date_value)
+
         if attendance_date is None:
             return jsonify({
                 "error": "date must use YYYY-MM-DD format."
             }), 400
 
-        query = query.filter_by(attendance_date=attendance_date)
-
-    # Filter by a date range.
-    if start_date_value is not None:
-        start_date = parse_date(start_date_value)
-        if start_date is None:
-            return jsonify({
-                "error": "start_date must use YYYY-MM-DD format."
-            }), 400
-
+        # Explicitly filter Attendance, not the joined FacultySubject.
         query = query.filter(
-            Attendance.attendance_date >= start_date
+            Attendance.attendance_date == attendance_date
         )
-
-    if end_date_value is not None:
-        end_date = parse_date(end_date_value)
-        if end_date is None:
-            return jsonify({
-                "error": "end_date must use YYYY-MM-DD format."
-            }), 400
-
-        query = query.filter(
-            Attendance.attendance_date <= end_date
-        )
-
-    if (
-        start_date_value is not None
-        and end_date_value is not None
-        and start_date > end_date
-    ):
-        return jsonify({
-            "error": "start_date must not be after end_date."
-        }), 400
 
     records = query.order_by(
         Attendance.attendance_date.desc()
@@ -307,6 +327,11 @@ def save_attendance():
 
     if db.session.get(Subject, subject_id) is None:
         return jsonify({"error": "Subject not found."}), 404
+
+    # Faculty may record attendance only for assigned subjects.
+    permission_error = subject_permission_error(subject_id)
+    if permission_error:
+        return permission_error
 
     enrollment = db.session.get(
         StudentSubject, (student_id, subject_id)
@@ -370,16 +395,22 @@ def update_attendance(attendance_id):
         }), 400
 
     status = data.get("status")
+
     if status not in ("Present", "Absent"):
         return jsonify({
             "error": "status must be Present or Absent."
         }), 400
 
     record = db.session.get(Attendance, attendance_id)
+
     if record is None:
         return jsonify({
             "error": "Attendance record not found."
         }), 404
+
+    permission_error = subject_permission_error(record.subject_id)
+    if permission_error:
+        return permission_error
 
     try:
         record.status = status
@@ -407,6 +438,11 @@ def attendance_percentage(student_id, subject_id):
     subject = db.session.get(Subject, subject_id)
     if subject is None:
         return jsonify({"error": "Subject not found."}), 404
+
+    if current_user.role != "Student":
+        permission_error = subject_permission_error(subject_id)
+        if permission_error:
+            return permission_error
 
     total_classes = Attendance.query.filter_by(
         student_id=student_id,
