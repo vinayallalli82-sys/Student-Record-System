@@ -1,6 +1,8 @@
 
 import pytest
 
+import pytest
+
 from backend.extensions import db
 from backend.models.mark import Mark
 
@@ -146,6 +148,135 @@ def test_invalid_update_preserves_existing_marks(client, app):
     )
     assert response.status_code == 400
 
+    with app.app_context():
+        saved_mark = db.session.get(Mark, mark_id)
+        assert float(saved_mark.marks_obtained) == 30.0
+
+
+@pytest.mark.parametrize(
+    ("obtained", "maximum"),
+    [(51, 50), (-1, 50), (10, 0), (10000, 10001)],
+)
+def test_invalid_marks_update_preserves_existing_record(
+    client, app, obtained, maximum
+):
+    faculty_login(client)
+    ids = app.test_ids
+    created = client.post(
+        "/api/marks/",
+        json=marks_payload(ids, obtained=30, maximum=50),
+        headers=csrf_headers(client),
+    )
+    assert created.status_code == 201
+    mark_id = created.get_json()["mark_id"]
+
+    response = client.put(
+        f"/api/marks/{mark_id}",
+        json=marks_payload(ids, obtained=obtained, maximum=maximum),
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 400
+    with app.app_context():
+        saved_mark = db.session.get(Mark, mark_id)
+        assert float(saved_mark.marks_obtained) == 30.0
+        assert float(saved_mark.max_marks) == 50.0
+
+
+@pytest.mark.parametrize("field", ["student_id", "subject_id"])
+def test_marks_update_rejects_nonexistent_reference_without_changes(
+    client, app, field
+):
+    faculty_login(client)
+    ids = app.test_ids
+    created = client.post(
+        "/api/marks/",
+        json=marks_payload(ids, obtained=30),
+        headers=csrf_headers(client),
+    )
+    assert created.status_code == 201
+    mark_id = created.get_json()["mark_id"]
+
+    invalid_payload = marks_payload(ids, obtained=40)
+    invalid_payload[field] = 999999
+    response = client.put(
+        f"/api/marks/{mark_id}",
+        json=invalid_payload,
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code in (403, 404)
+    with app.app_context():
+        saved_mark = db.session.get(Mark, mark_id)
+        assert saved_mark.student_id == ids["student_a"]
+        assert saved_mark.subject_id == ids["subject"]
+        assert float(saved_mark.marks_obtained) == 30.0
+
+
+def test_duplicate_mark_update_preserves_both_existing_records(client, app):
+    faculty_login(client)
+    ids = app.test_ids
+
+    first_payload = marks_payload(ids, obtained=25)
+    first_payload["assessment_name"] = "ISA 1"
+    first = client.post(
+        "/api/marks/",
+        json=first_payload,
+        headers=csrf_headers(client),
+    )
+    assert first.status_code == 201
+
+    second_payload = marks_payload(ids, obtained=30)
+    second_payload["assessment_name"] = "ISA 2"
+    second = client.post(
+        "/api/marks/",
+        json=second_payload,
+        headers=csrf_headers(client),
+    )
+    assert second.status_code == 201
+
+    conflicting_payload = marks_payload(ids, obtained=40)
+    conflicting_payload["assessment_name"] = "ISA 1"
+    response = client.put(
+        f"/api/marks/{second.get_json()['mark_id']}",
+        json=conflicting_payload,
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 409
+    with app.app_context():
+        first_mark = db.session.get(Mark, first.get_json()["mark_id"])
+        second_mark = db.session.get(Mark, second.get_json()["mark_id"])
+        assert first_mark.assessment_name == "ISA 1"
+        assert float(first_mark.marks_obtained) == 25.0
+        assert second_mark.assessment_name == "ISA 2"
+        assert float(second_mark.marks_obtained) == 30.0
+
+
+def test_marks_update_database_failure_rolls_back(client, app, monkeypatch):
+    from sqlalchemy.exc import SQLAlchemyError
+
+    faculty_login(client)
+    ids = app.test_ids
+    created = client.post(
+        "/api/marks/",
+        json=marks_payload(ids, obtained=30),
+        headers=csrf_headers(client),
+    )
+    assert created.status_code == 201
+    mark_id = created.get_json()["mark_id"]
+
+    def fail_commit():
+        raise SQLAlchemyError("forced database failure")
+
+    monkeypatch.setattr(db.session, "commit", fail_commit)
+    response = client.put(
+        f"/api/marks/{mark_id}",
+        json=marks_payload(ids, obtained=40),
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 500
     with app.app_context():
         saved_mark = db.session.get(Mark, mark_id)
         assert float(saved_mark.marks_obtained) == 30.0

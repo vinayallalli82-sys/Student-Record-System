@@ -1,4 +1,6 @@
 
+from datetime import date
+
 import pytest
 
 from sqlalchemy import select
@@ -403,6 +405,107 @@ def test_attendance_update_recalculates_percentage(client, app):
     assert percentage.get_json()["attendance_percentage"] == 0.0
 
 
+@pytest.mark.parametrize("bad_status", ["Late", "Present-ish", "", None])
+def test_invalid_attendance_update_preserves_existing_record(
+    client, app, bad_status
+):
+    faculty_login(client)
+    ids = app.test_ids
+    created = client.post(
+        "/api/attendance",
+        json=attendance_payload(ids, status="Present"),
+        headers=csrf_headers(client),
+    )
+    assert created.status_code == 201
+    attendance_id = created.get_json()["attendance_id"]
+
+    response = client.put(
+        f"/api/attendance/{attendance_id}",
+        json={"status": bad_status},
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 400
+    with app.app_context():
+        record = db.session.get(Attendance, attendance_id)
+        assert record.status == "Present"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("student_id", 999999), ("subject_id", 999999)],
+)
+def test_attendance_rejects_nonexistent_references(
+    client, app, field, value
+):
+    faculty_login(client)
+    payload = attendance_payload(app.test_ids)
+    payload[field] = value
+
+    response = client.post(
+        "/api/attendance",
+        json=payload,
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 404
+
+
+def test_student_cannot_update_attendance(client, app):
+    faculty_login(client)
+    ids = app.test_ids
+    created = client.post(
+        "/api/attendance",
+        json=attendance_payload(ids, status="Present"),
+        headers=csrf_headers(client),
+    )
+    assert created.status_code == 201
+    attendance_id = created.get_json()["attendance_id"]
+
+    assert login(client, "student.a@example.com").status_code == 200
+    response = client.put(
+        f"/api/attendance/{attendance_id}",
+        json={"status": "Absent"},
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 403
+    with app.app_context():
+        record = db.session.get(Attendance, attendance_id)
+        assert record.status == "Present"
+
+
+def test_attendance_update_database_failure_rolls_back(
+    client, app, monkeypatch
+):
+    from sqlalchemy.exc import SQLAlchemyError
+
+    faculty_login(client)
+    ids = app.test_ids
+    created = client.post(
+        "/api/attendance",
+        json=attendance_payload(ids, status="Present"),
+        headers=csrf_headers(client),
+    )
+    assert created.status_code == 201
+    attendance_id = created.get_json()["attendance_id"]
+
+    def fail_commit():
+        raise SQLAlchemyError("forced database failure")
+
+    monkeypatch.setattr(db.session, "commit", fail_commit)
+    response = client.put(
+        f"/api/attendance/{attendance_id}",
+        json={"status": "Absent"},
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 500
+    with app.app_context():
+        record = db.session.get(Attendance, attendance_id)
+        assert record.status == "Present"
+
+
 def test_logout_blocks_protected_access(client):
     response = login(client, "student.a@example.com")
     assert response.status_code == 200
@@ -435,6 +538,14 @@ def test_duplicate_attendance_is_rejected(client, app):
         headers=csrf_headers(client),
     )
     assert duplicate.status_code == 409
+    with app.app_context():
+        records = Attendance.query.filter_by(
+            student_id=ids["student_a"],
+            subject_id=ids["subject"],
+            attendance_date=date.fromisoformat(payload["attendance_date"]),
+        ).all()
+        assert len(records) == 1
+        assert records[0].status == "Present"
 
 
 @pytest.mark.parametrize("bad_date", ["23-10-2026", "not-a-date", "2026-02-30"])
