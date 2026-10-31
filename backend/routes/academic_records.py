@@ -1,7 +1,6 @@
+"""FR-005: View and FR-015: Download a student's academic records."""
 
-"""FR-005: View a student's academic records by semester."""
-
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 from flask_login import current_user, login_required
 from sqlalchemy import case, func
 
@@ -12,6 +11,9 @@ from backend.models.semester import Semester
 from backend.models.student import Student
 from backend.models.subject import Subject
 from backend.services.gpa_service import marks_to_grade
+from backend.services.academic_records_pdf import (
+    generate_academic_records_pdf,
+)
 
 
 academic_records_bp = Blueprint(
@@ -21,45 +23,39 @@ academic_records_bp = Blueprint(
 )
 
 
-@academic_records_bp.get("/my")
-@login_required
-def my_academic_records():
-    """Return the logged-in student's academic records for a semester."""
+def get_student_academic_records():
+    """Build academic records for the logged-in student and semester."""
 
-    # Restrict this endpoint to student accounts.
     if current_user.role != "Student":
-        return jsonify({
+        return None, ({
             "error": "This endpoint is for student accounts only."
-        }), 403
+        }, 403)
 
-    # Find the student profile associated with the logged-in user.
     student = Student.query.filter_by(
         user_id=current_user.user_id
     ).first()
 
     if student is None:
-        return jsonify({
+        return None, ({
             "error": "Student profile not found."
-        }), 404
+        }, 404)
 
-    # Validate the requested semester number.
     semester_value = request.args.get("semester", type=int)
 
     if semester_value is None or semester_value <= 0:
-        return jsonify({
+        return None, ({
             "error": "A positive semester number is required."
-        }), 400
+        }, 400)
 
     semester = Semester.query.filter_by(
         semester_number=semester_value
     ).first()
 
     if semester is None:
-        return jsonify({
+        return None, ({
             "error": "Semester not found."
-        }), 404
+        }, 404)
 
-    # Retrieve the subjects belonging to the selected semester.
     subjects = (
         Subject.query
         .filter_by(semester_id=semester.semester_id)
@@ -70,7 +66,6 @@ def my_academic_records():
     records = []
 
     for subject in subjects:
-        # Retrieve this student's marks for the current subject.
         marks = (
             Mark.query
             .filter_by(
@@ -91,7 +86,6 @@ def my_academic_records():
             start=0,
         )
 
-        # Build the assessment-wise marks and grade summary.
         assessments = []
 
         for mark in marks:
@@ -115,7 +109,6 @@ def my_academic_records():
                 "grade_point": float(grade_point),
             })
 
-        # Count attendance records and classes attended.
         attendance_counts = db.session.query(
             func.count(Attendance.attendance_id),
             func.sum(
@@ -153,8 +146,6 @@ def my_academic_records():
             },
         })
 
-    # A semester has records when at least one subject is returned.
-    # Assessment marks and attendance can legitimately be empty.
     has_records = bool(records)
 
     message = (
@@ -163,11 +154,48 @@ def my_academic_records():
         else "No subjects found for this semester."
     )
 
-    return jsonify({
+    return {
         "status": "success",
         "student_id": student.student_id,
         "semester": semester.semester_number,
         "academic_year": semester.academic_year,
         "message": message,
         "subjects": records,
-    }), 200
+    }, None
+
+
+@academic_records_bp.get("/my")
+@login_required
+def my_academic_records():
+    """Return the logged-in student's academic records for a semester."""
+
+    data, error = get_student_academic_records()
+
+    if error:
+        return jsonify(error[0]), error[1]
+
+    return jsonify(data), 200
+
+
+@academic_records_bp.get("/download")
+@login_required
+def download_academic_records():
+    """Download the logged-in student's academic records as a PDF."""
+
+    data, error = get_student_academic_records()
+
+    if error:
+        return jsonify(error[0]), error[1]
+
+    pdf_buffer = generate_academic_records_pdf(data)
+
+    filename = (
+        f"academic_records_semester_{data['semester']}.pdf"
+    )
+
+    return send_file(
+        pdf_buffer,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=filename,
+    )

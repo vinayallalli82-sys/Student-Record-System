@@ -2,6 +2,8 @@
 from decimal import Decimal, InvalidOperation
 
 from flask import Blueprint, jsonify, request
+from flask_login import current_user, login_required
+from functools import wraps
 from sqlalchemy.exc import IntegrityError
 
 from backend.extensions import db
@@ -9,6 +11,16 @@ from backend.models.semester import Semester
 from backend.models.subject import Subject
 
 subjects_bp = Blueprint("subjects", __name__, url_prefix="/api/subjects")
+
+
+def administrator_required(view):
+    @wraps(view)
+    @login_required
+    def wrapped(*args, **kwargs):
+        if current_user.role != "Administrator":
+            return jsonify({"error": "Administrator access required."}), 403
+        return view(*args, **kwargs)
+    return wrapped
 
 
 def subject_to_dict(subject):
@@ -114,6 +126,7 @@ def get_subject(subject_id):
 
 
 @subjects_bp.post("")
+@administrator_required
 def create_subject():
     data = request.get_json(silent=True)
     values, error = validate_subject_data(data)
@@ -143,6 +156,7 @@ def create_subject():
 
 
 @subjects_bp.put("/<int:subject_id>")
+@administrator_required
 def update_subject(subject_id):
     subject = db.session.get(Subject, subject_id)
 

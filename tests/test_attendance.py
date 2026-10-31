@@ -12,6 +12,7 @@ from backend.models.semester import Semester
 from backend.models.attendance import Attendance
 from backend.models.notification import Notification
 from backend.models.student_subject import StudentSubject
+from backend.models.faculty_subject import FacultySubject
 from werkzeug.security import generate_password_hash
 
 
@@ -89,6 +90,12 @@ def app(monkeypatch):
         )
         db.session.add(subject)
         db.session.flush()
+
+        # The default test faculty is explicitly assigned to the fixture subject.
+        db.session.add(FacultySubject(
+            faculty_id=faculty.user_id,
+            subject_id=subject.subject_id,
+        ))
 
         db.session.add_all([
             StudentSubject(

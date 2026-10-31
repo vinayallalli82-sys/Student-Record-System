@@ -39,11 +39,12 @@
             </div>
 
             <nav class="dashboard-nav navigation" aria-label="Dashboard navigation">
-                <button type="button" data-view="attendanceView">Attendance</button>
+                <button type="button" data-view="attendanceView" id="attendanceNav">Attendance</button>
                 <button type="button" data-view="gpaView" id="gpaNav">Semester GPA</button>
                 <button type="button" data-view="academicRecordsView" id="academicRecordsNav" class="hidden">Academic Records</button>
                 <button type="button" data-view="marksSummaryView" id="marksSummaryNav" class="hidden">Marks Summary</button>
                 <button type="button" data-view="facultyView" id="facultyNav" class="hidden">Faculty tools</button>
+                <button type="button" data-view="adminView" id="adminNav" class="hidden">Administrator</button>
             </nav>
 
             <section id="attendanceView" class="card view">
@@ -111,6 +112,55 @@
                 <p id="studentMarksSummaryMessage" class="message" role="status" aria-live="polite"></p>
                 <div id="studentMarksSummaryResults" class="results" aria-live="polite"></div>
             </section>
+            <section id="adminView" class="card view hidden">
+                <h2>Administrator tools</h2>
+                <p>Manage user accounts, roles, activation status, and faculty subject assignments.</p>
+
+                <section aria-labelledby="adminCreateHeading">
+                    <h3 id="adminCreateHeading">Create account</h3>
+                    <form id="adminCreateUserForm">
+                        <label for="adminNewEmail">Email address</label>
+                        <input id="adminNewEmail" type="email" autocomplete="off" required>
+                        <label for="adminNewPassword">Temporary password (at least 8 characters)</label>
+                        <input id="adminNewPassword" type="password" minlength="8" autocomplete="new-password" required>
+                        <label for="adminNewRole">Role</label>
+                        <select id="adminNewRole" required>
+                            <option value="Student">Student</option>
+                            <option value="Faculty">Faculty</option>
+                            <option value="Administrator">Administrator</option>
+                        </select>
+                        <button type="submit">Create account</button>
+                    </form>
+                    <p id="adminAccountMessage" class="message" role="status" aria-live="polite"></p>
+                </section>
+
+                <section aria-labelledby="adminUsersHeading">
+                    <h3 id="adminUsersHeading">User accounts</h3>
+                    <p>Choose a role and activation status, then save the changes.</p>
+                    <button type="button" id="refreshAdminUsers">Refresh users</button>
+                    <div id="adminUsersResults" class="results" aria-live="polite"></div>
+                </section>
+
+                <section aria-labelledby="adminAssignmentHeading">
+                    <h3 id="adminAssignmentHeading">Assign faculty to subjects</h3>
+                    <form id="adminAssignmentForm">
+                        <label for="adminFacultySelect">Faculty account</label>
+                        <select id="adminFacultySelect" required>
+                            <option value="">Choose faculty</option>
+                        </select>
+                        <label for="adminSubjectSelect">Subject</label>
+                        <select id="adminSubjectSelect" required>
+                            <option value="">Choose subject</option>
+                        </select>
+                        <button type="submit">Assign subject</button>
+                    </form>
+                    <p id="adminAssignmentMessage" class="message" role="status" aria-live="polite"></p>
+                    <h3>Current assignments</h3>
+                    <button type="button" id="refreshAdminAssignments">Refresh assignments</button>
+                    <div id="adminAssignmentsResults" class="results" aria-live="polite"></div>
+                </section>
+            </section>
+
             <section id="facultyView" class="card view hidden">
                 <h2>Faculty tools</h2>
                 <p>Manage attendance and assessment marks for students in your subjects.</p>

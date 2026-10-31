@@ -559,3 +559,41 @@ table tbody tr:hover {
         transition-duration: 0.01ms !important;
     }
 }
+
+
+/* ADMIN-002 account and faculty-assignment management */
+.admin-user-row,
+.admin-assignment-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.admin-user-row strong,
+.admin-assignment-row span {
+    flex: 1 1 220px;
+    overflow-wrap: anywhere;
+}
+
+.admin-user-row select {
+    min-width: 130px;
+}
+
+.admin-user-row label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#adminView section {
+    margin-top: 24px;
+    padding-top: 12px;
+    border-top: 1px solid #e2e8f0;
+}
+
+#adminView form {
+    max-width: 620px;
+}
