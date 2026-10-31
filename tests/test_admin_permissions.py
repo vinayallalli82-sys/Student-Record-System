@@ -4,6 +4,7 @@ import pytest
 from werkzeug.security import generate_password_hash
 
 from backend.extensions import db
+from backend.models.subject import Subject
 from backend.models.user import User
 from tests.test_attendance import app, client, login, csrf_headers
 
@@ -122,3 +123,151 @@ def test_admin_rejects_invalid_role(client, app):
         headers=csrf_headers(client),
     )
     assert response.status_code == 400
+
+
+def subject_update_payload(app, subject_id, **overrides):
+    with app.app_context():
+        subject = db.session.get(Subject, subject_id)
+        payload = {
+            "subject_code": subject.subject_code,
+            "subject_name": subject.subject_name,
+            "credits": str(subject.credits),
+            "semester_id": subject.semester_id,
+        }
+    payload.update(overrides)
+    return payload
+
+
+def test_admin_can_update_subject_validly(client, app):
+    create_admin(app)
+    admin_login(client)
+    subject_id = app.test_ids["subject"]
+
+    response = client.put(
+        f"/api/subjects/{subject_id}",
+        json=subject_update_payload(
+            app,
+            subject_id,
+            subject_name="Updated Test Subject",
+            credits="4.0",
+        ),
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 200
+    with app.app_context():
+        subject = db.session.get(Subject, subject_id)
+        assert subject.subject_name == "Updated Test Subject"
+        assert str(subject.credits) == "4.0"
+
+
+def test_subject_update_rejects_nonexistent_semester_without_changes(
+    client, app
+):
+    create_admin(app)
+    admin_login(client)
+    subject_id = app.test_ids["subject"]
+    original = subject_update_payload(app, subject_id)
+    response = client.put(
+        f"/api/subjects/{subject_id}",
+        json={
+            **original,
+            "subject_name": "Invalid Semester Change",
+            "semester_id": 999999,
+        },
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 400
+    with app.app_context():
+        subject = db.session.get(Subject, subject_id)
+        assert subject.subject_name == original["subject_name"]
+        assert subject.semester_id == original["semester_id"]
+
+
+def test_subject_update_duplicate_code_preserves_existing_subjects(
+    client, app
+):
+    create_admin(app)
+    admin_login(client)
+    ids = app.test_ids
+    with app.app_context():
+        semester_id = db.session.get(
+            Subject, ids["subject"]
+        ).semester_id
+        duplicate = Subject(
+            subject_code="OTHER101",
+            subject_name="Other Subject",
+            credits=2.0,
+            semester_id=semester_id,
+        )
+        db.session.add(duplicate)
+        db.session.commit()
+
+    original = subject_update_payload(app, ids["subject"])
+    response = client.put(
+        f"/api/subjects/{ids['subject']}",
+        json={
+            **original,
+            "subject_code": "OTHER101",
+            "subject_name": "Conflicting Update",
+        },
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 409
+    with app.app_context():
+        subject = db.session.get(Subject, ids["subject"])
+        duplicate_subject = Subject.query.filter_by(
+            subject_code="OTHER101"
+        ).one()
+        assert subject.subject_code == original["subject_code"]
+        assert subject.subject_name == original["subject_name"]
+        assert duplicate_subject.subject_name == "Other Subject"
+
+
+def test_subject_update_database_failure_rolls_back(
+    client, app, monkeypatch
+):
+    from sqlalchemy.exc import SQLAlchemyError
+
+    create_admin(app)
+    admin_login(client)
+    subject_id = app.test_ids["subject"]
+    payload = subject_update_payload(
+        app, subject_id, subject_name="Failed Update"
+    )
+
+    def fail_commit():
+        raise SQLAlchemyError("forced database failure")
+
+    monkeypatch.setattr(db.session, "commit", fail_commit)
+    response = client.put(
+        f"/api/subjects/{subject_id}",
+        json=payload,
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 500
+    with app.app_context():
+        subject = db.session.get(Subject, subject_id)
+        assert subject.subject_name == "Test Subject"
+
+
+def test_faculty_cannot_update_subject(client, app):
+    assert login(
+        client, "faculty@example.com", "FacultyTest123!"
+    ).status_code == 200
+    subject_id = app.test_ids["subject"]
+    response = client.put(
+        f"/api/subjects/{subject_id}",
+        json=subject_update_payload(
+            app, subject_id, subject_name="Unauthorized Update"
+        ),
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 403
+    with app.app_context():
+        subject = db.session.get(Subject, subject_id)
+        assert subject.subject_name == "Test Subject"

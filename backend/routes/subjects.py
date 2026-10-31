@@ -1,10 +1,10 @@
 
 from decimal import Decimal, InvalidOperation
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user, login_required
 from functools import wraps
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from backend.extensions import db
 from backend.models.semester import Semester
@@ -148,9 +148,14 @@ def create_subject():
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
+        current_app.logger.exception("Failed to create subject due to a conflict")
         return jsonify({
             "error": "Could not create subject. Check the subject code and semester."
         }), 409
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("Failed to create subject")
+        return jsonify({"error": "Unable to create subject."}), 500
 
     return jsonify(subject_to_dict(subject)), 201
 
@@ -184,8 +189,13 @@ def update_subject(subject_id):
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
+        current_app.logger.exception("Failed to update subject due to a conflict")
         return jsonify({
             "error": "Could not update subject. Check the subject code and semester."
         }), 409
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("Failed to update subject")
+        return jsonify({"error": "Unable to update subject."}), 500
 
     return jsonify(subject_to_dict(subject)), 200
