@@ -1,4 +1,3 @@
-
 """Attendance management and student attendance records."""
 
 from datetime import date
@@ -6,6 +5,7 @@ from functools import wraps
 
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
+from sqlalchemy import and_, case, func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from backend.extensions import db
@@ -193,7 +193,6 @@ def list_attendance():
     start_value = request.args.get("start_date")
     end_value = request.args.get("end_date")
 
-    # Always query Attendance, even when joining faculty assignments.
     query = Attendance.query
 
     if current_user.role == "Faculty":
@@ -204,7 +203,6 @@ def list_attendance():
             FacultySubject.faculty_id == current_user.user_id
         )
 
-    # Validate and apply an inclusive date range when supplied.
     start_date = (
         parse_date(start_value) if start_value is not None else None
     )
@@ -254,7 +252,6 @@ def list_attendance():
         if permission_error:
             return permission_error
 
-        # Explicitly filter Attendance, not the joined FacultySubject.
         query = query.filter(
             Attendance.subject_id == subject_id
         )
@@ -267,7 +264,6 @@ def list_attendance():
                 "error": "date must use YYYY-MM-DD format."
             }), 400
 
-        # Explicitly filter Attendance, not the joined FacultySubject.
         query = query.filter(
             Attendance.attendance_date == attendance_date
         )
@@ -328,7 +324,6 @@ def save_attendance():
     if db.session.get(Subject, subject_id) is None:
         return jsonify({"error": "Subject not found."}), 404
 
-    # Faculty may record attendance only for assigned subjects.
     permission_error = subject_permission_error(subject_id)
     if permission_error:
         return permission_error
@@ -469,4 +464,140 @@ def attendance_percentage(student_id, subject_id):
         "total_classes": total_classes,
         "classes_attended": classes_attended,
         "attendance_percentage": percentage,
+    }), 200
+
+
+@attendance_bp.get("/class-report")
+@roles_required("Faculty", "Administrator")
+def class_attendance_report():
+    """Generate a student-wise attendance report for a subject."""
+
+    subject_id = request.args.get("subject_id", type=int)
+    start_value = request.args.get("start_date")
+    end_value = request.args.get("end_date")
+
+    if subject_id is None or subject_id <= 0:
+        return jsonify({
+            "error": "A positive subject_id is required."
+        }), 400
+
+    subject = db.session.get(Subject, subject_id)
+
+    if subject is None:
+        return jsonify({"error": "Subject not found."}), 404
+
+    permission_error = subject_permission_error(subject_id)
+    if permission_error:
+        return permission_error
+
+    start_date = (
+        parse_date(start_value) if start_value is not None else None
+    )
+    end_date = (
+        parse_date(end_value) if end_value is not None else None
+    )
+
+    if start_value is not None and start_date is None:
+        return jsonify({
+            "error": "start_date must use YYYY-MM-DD format."
+        }), 400
+
+    if end_value is not None and end_date is None:
+        return jsonify({
+            "error": "end_date must use YYYY-MM-DD format."
+        }), 400
+
+    if (
+        start_date is not None
+        and end_date is not None
+        and start_date > end_date
+    ):
+        return jsonify({
+            "error": "start_date must not be after end_date."
+        }), 400
+
+    attendance_conditions = [
+        Attendance.student_id == Student.student_id,
+        Attendance.subject_id == subject_id,
+    ]
+
+    if start_date is not None:
+        attendance_conditions.append(
+            Attendance.attendance_date >= start_date
+        )
+
+    if end_date is not None:
+        attendance_conditions.append(
+            Attendance.attendance_date <= end_date
+        )
+
+    rows = (
+        db.session.query(
+            Student,
+            func.count(Attendance.attendance_id).label("total_classes"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Attendance.status == "Present", 1),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("present"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Attendance.status == "Absent", 1),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("absent"),
+        )
+        .join(
+            StudentSubject,
+            StudentSubject.student_id == Student.student_id,
+        )
+        .outerjoin(
+            Attendance,
+            and_(*attendance_conditions),
+        )
+        .filter(StudentSubject.subject_id == subject_id)
+        .group_by(Student.student_id)
+        .order_by(Student.registration_number)
+        .all()
+    )
+
+    students = []
+
+    for student, total_classes, present, absent in rows:
+        percentage = (
+            round(present / total_classes * 100, 2)
+            if total_classes > 0
+            else 0.0
+        )
+
+        students.append({
+            "student_id": student.student_id,
+            "registration_number": student.registration_number,
+            "first_name": student.first_name,
+            "last_name": student.last_name,
+            "total_classes": total_classes,
+            "present": present,
+            "absent": absent,
+            "attendance_percentage": percentage,
+        })
+
+    return jsonify({
+        "subject_id": subject.subject_id,
+        "subject_code": subject.subject_code,
+        "subject_name": subject.subject_name,
+        "start_date": (
+            start_date.isoformat() if start_date else None
+        ),
+        "end_date": (
+            end_date.isoformat() if end_date else None
+        ),
+        "total_students": len(students),
+        "students": students,
     }), 200

@@ -4,5 +4,6 @@ PyMySQL
 python-dotenv
 Flask-Login
 Flask-WTF
+reportlab
 requests
 tzdata
