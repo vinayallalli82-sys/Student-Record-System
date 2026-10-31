@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 
 /*
  * Student Record System dashboard.
@@ -12,8 +12,29 @@ const loginForm = document.getElementById("loginForm");
 const loginMessage = document.getElementById("loginMessage");
 const globalMessage = document.getElementById("globalMessage");
 const logoutButton = document.getElementById("logoutButton");
+const notificationModal = document.getElementById("notificationModal");
+const notificationDialog =
+    document.getElementById("notificationDialog");
+const notificationCounter =
+    document.getElementById("notificationCounter");
+const notificationSubject =
+    document.getElementById("notificationSubject");
+const notificationPercentage =
+    document.getElementById("notificationPercentage");
+const notificationMessage =
+    document.getElementById("notificationMessage");
+const previousNotificationButton =
+    document.getElementById("previousNotification");
+const nextNotificationButton =
+    document.getElementById("nextNotification");
+const dismissNotificationButton =
+    document.getElementById("dismissNotification");
 
 let currentUser = null;
+let notificationSessionId = 0;
+let notificationDismissed = false;
+let studentNotifications = [];
+let currentNotificationIndex = 0;
 
 /* Accessible messages */
 function showMessage(element, message, isError = false) {
@@ -277,9 +298,112 @@ function renderAcademicRecords(container, subjects) {
     });
 }
 
+function renderStudentNotification(index) {
+    const notification = studentNotifications[index];
+    if (!notification) return;
+
+    const message = String(notification.message || "");
+    const subjectMatch = message.match(
+        /^Low attendance alert for (.+?): your attendance is /i
+    );
+    const subjectName =
+        notification.subject_name ||
+        subjectMatch?.[1] ||
+        `Subject ${notification.subject_id ?? "—"}`;
+
+    notificationSubject.textContent = subjectName;
+    notificationPercentage.textContent =
+        `${formatNumber(notification.attendance_percentage)}%`;
+    notificationMessage.textContent =
+        message || "Your attendance is below the required threshold.";
+    notificationCounter.textContent =
+        `${index + 1} of ${studentNotifications.length}`;
+    notificationCounter.classList.toggle(
+        "hidden",
+        studentNotifications.length < 2
+    );
+    previousNotificationButton.classList.toggle(
+        "hidden",
+        studentNotifications.length < 2
+    );
+    nextNotificationButton.classList.toggle(
+        "hidden",
+        studentNotifications.length < 2
+    );
+    previousNotificationButton.disabled = index === 0;
+    nextNotificationButton.disabled =
+        index === studentNotifications.length - 1;
+}
+
+function showStudentNotification() {
+    if (
+        notificationDismissed ||
+        !currentUser ||
+        currentUser.role !== "Student" ||
+        studentNotifications.length === 0 ||
+        !notificationModal
+    ) {
+        return;
+    }
+
+    renderStudentNotification(currentNotificationIndex);
+    notificationModal.classList.remove("hidden");
+    notificationModal.setAttribute("aria-hidden", "false");
+    notificationDialog?.focus();
+}
+
+function dismissStudentNotification() {
+    notificationDismissed = true;
+    notificationModal?.classList.add("hidden");
+    notificationModal?.setAttribute("aria-hidden", "true");
+}
+
+async function loadStudentNotifications(sessionId) {
+    if (!currentUser || currentUser.role !== "Student") return;
+
+    try {
+        const notifications = await api("/api/notifications");
+
+        if (
+            sessionId !== notificationSessionId ||
+            !currentUser ||
+            currentUser.role !== "Student" ||
+            notificationDismissed
+        ) {
+            return;
+        }
+
+        if (!Array.isArray(notifications)) {
+            throw new Error(
+                "The server returned an unexpected notifications response."
+            );
+        }
+
+        if (notifications.length === 0) return;
+
+        studentNotifications = notifications;
+        currentNotificationIndex = 0;
+        showStudentNotification();
+    } catch (error) {
+        if (sessionId === notificationSessionId && currentUser?.role === "Student") {
+            showMessage(
+                globalMessage,
+                error.message || "Unable to load notifications.",
+                true
+            );
+        }
+    }
+}
+
 /* Open the dashboard for the authenticated user */
 function openDashboard(user) {
     currentUser = user;
+    notificationSessionId += 1;
+    notificationDismissed = false;
+    studentNotifications = [];
+    currentNotificationIndex = 0;
+    notificationModal?.classList.add("hidden");
+    notificationModal?.setAttribute("aria-hidden", "true");
 
     loginPanel?.classList.add("hidden");
     dashboardPanel?.classList.remove("hidden");
@@ -319,11 +443,24 @@ function openDashboard(user) {
     clearMessage(loginMessage);
     showMessage(globalMessage, "Signed in successfully.");
     showView("attendanceView");
+    if (isStudent) {
+        void loadStudentNotifications(notificationSessionId);
+    }
 }
 
 /* Return to the login screen */
 function closeDashboard(message = "") {
     currentUser = null;
+    notificationSessionId += 1;
+    notificationDismissed = false;
+    studentNotifications = [];
+    currentNotificationIndex = 0;
+    notificationModal?.classList.add("hidden");
+    notificationModal?.setAttribute("aria-hidden", "true");
+    notificationCounter.textContent = "";
+    notificationSubject.textContent = "";
+    notificationPercentage.textContent = "";
+    notificationMessage.textContent = "";
 
     dashboardPanel?.classList.add("hidden");
     loginPanel?.classList.remove("hidden");
@@ -750,6 +887,18 @@ const facultyAttendanceResults =
     document.getElementById("facultyAttendanceResults");
 const saveAttendanceButton =
     document.getElementById("saveAttendanceButton");
+const attendanceStartDate =
+    document.getElementById("attendanceStartDate");
+const attendanceEndDate =
+    document.getElementById("attendanceEndDate");
+const filterAttendanceButton =
+    document.getElementById("filterAttendanceButton");
+const clearAttendanceFilterButton =
+    document.getElementById("clearAttendanceFilterButton");
+const attendanceFilterMessage =
+    document.getElementById("attendanceFilterMessage");
+const attendanceFilterResults =
+    document.getElementById("attendanceFilterResults");
 
 let facultyAttendanceStudents = [];
 let facultyAttendanceRecords = new Map();
@@ -974,6 +1123,113 @@ async function loadFacultyAttendance() {
         throw error;
     }
 }
+
+async function filterAttendanceRecords() {
+    const subjectId = attendanceSubject?.value;
+    const startDate = attendanceStartDate?.value;
+    const endDate = attendanceEndDate?.value;
+
+    if (attendanceFilterResults) attendanceFilterResults.replaceChildren();
+
+    if (!subjectId) {
+        showMessage(attendanceFilterMessage, "Please choose a subject.", true);
+        return;
+    }
+
+    if (!startDate && !endDate) {
+        showMessage(
+            attendanceFilterMessage,
+            "Select a start date, an end date, or both.",
+            true
+        );
+        return;
+    }
+
+    if (startDate && endDate && startDate > endDate) {
+        showMessage(
+            attendanceFilterMessage,
+            "Start date cannot be after end date.",
+            true
+        );
+        return;
+    }
+
+    const params = new URLSearchParams();
+    params.set("subject_id", subjectId);
+    if (startDate) params.set("start_date", startDate);
+    if (endDate) params.set("end_date", endDate);
+
+    showMessage(attendanceFilterMessage, "Loading attendance records...");
+
+    try {
+        const records = await api(`/api/attendance?${params.toString()}`);
+        if (!Array.isArray(records)) {
+            throw new Error("The server returned invalid attendance data.");
+        }
+
+        if (records.length === 0) {
+            if (attendanceFilterResults) {
+                attendanceFilterResults.textContent =
+                    "No attendance records match the selected filters.";
+            }
+            showMessage(attendanceFilterMessage, "No matching records.");
+            return;
+        }
+
+        const table = document.createElement("table");
+        const thead = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        ["Student ID", "Subject ID", "Date", "Status"].forEach((label) => {
+            const th = document.createElement("th");
+            th.textContent = label;
+            headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement("tbody");
+        records.forEach((record) => {
+            const row = document.createElement("tr");
+            [record.student_id, record.subject_id, record.attendance_date, record.status]
+                .forEach((value) => {
+                    const cell = document.createElement("td");
+                    cell.textContent = value == null ? "—" : String(value);
+                    row.appendChild(cell);
+                });
+            tbody.appendChild(row);
+        });
+        table.appendChild(tbody);
+        attendanceFilterResults?.appendChild(table);
+        showMessage(
+            attendanceFilterMessage,
+            `Found ${records.length} attendance record${records.length === 1 ? "" : "s"}.`
+        );
+    } catch (error) {
+        if (attendanceFilterResults) {
+            attendanceFilterResults.textContent =
+                error.message || "Unable to filter attendance records.";
+        }
+        showMessage(
+            attendanceFilterMessage,
+            error.message || "Unable to filter attendance records.",
+            true
+        );
+    }
+}
+
+filterAttendanceButton?.addEventListener("click", () => {
+    filterAttendanceRecords();
+});
+
+clearAttendanceFilterButton?.addEventListener("click", () => {
+    if (attendanceStartDate) attendanceStartDate.value = "";
+    if (attendanceEndDate) attendanceEndDate.value = "";
+    if (attendanceFilterResults) {
+        attendanceFilterResults.textContent =
+            "Choose a subject and date range, then select Filter records.";
+    }
+    showMessage(attendanceFilterMessage, "");
+});
 
 async function initializeFacultyAttendance() {
     if (!currentUser ||
@@ -1499,6 +1755,25 @@ document.querySelectorAll("[data-view]").forEach((button) => {
         }
     });
 });
+
+previousNotificationButton?.addEventListener("click", () => {
+    if (currentNotificationIndex > 0) {
+        currentNotificationIndex -= 1;
+        showStudentNotification();
+    }
+});
+
+nextNotificationButton?.addEventListener("click", () => {
+    if (currentNotificationIndex < studentNotifications.length - 1) {
+        currentNotificationIndex += 1;
+        showStudentNotification();
+    }
+});
+
+dismissNotificationButton?.addEventListener(
+    "click",
+    dismissStudentNotification
+);
 
 /* Faculty shortcut button: retained if present in the HTML */
 document.getElementById("facultyMarks")

@@ -16,6 +16,7 @@ from backend.routes.gpa import gpa_bp
 from backend.routes.academic_records import academic_records_bp
 from backend.routes.students import students_bp
 from backend.routes.backups import backups_bp
+from backend.routes.notifications import notifications_bp
 
 
 csrf = CSRFProtect()
@@ -64,6 +65,7 @@ def create_app():
     app.register_blueprint(academic_records_bp)
     app.register_blueprint(students_bp)
     app.register_blueprint(backups_bp)
+    app.register_blueprint(notifications_bp)
 
     # Serve the dashboard at the application home page.
     @app.route("/")
