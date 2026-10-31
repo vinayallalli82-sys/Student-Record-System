@@ -1,6 +1,8 @@
 
 import pytest
 
+from sqlalchemy import select
+
 from backend.app import create_app
 from backend.extensions import db
 from backend.models.user import User
@@ -8,6 +10,7 @@ from backend.models.student import Student
 from backend.models.subject import Subject
 from backend.models.semester import Semester
 from backend.models.attendance import Attendance
+from backend.models.notification import Notification
 from backend.models.student_subject import StudentSubject
 from backend.models.faculty_subject import FacultySubject
 from werkzeug.security import generate_password_hash
@@ -202,6 +205,129 @@ def test_faculty_can_record_attendance(client, app):
 
     assert response.status_code == 201
     assert response.get_json()["status"] == "Present"
+
+    with app.app_context():
+        notifications = db.session.scalars(
+            select(Notification).where(
+                Notification.student_id == ids["student_a"],
+                Notification.subject_id == ids["subject"],
+            )
+        ).all()
+        assert notifications == []
+
+
+def test_post_attendance_automatically_creates_and_removes_notification(
+    client, app
+):
+    faculty_login(client)
+    ids = app.test_ids
+
+    response = client.post(
+        "/api/attendance",
+        json=attendance_payload(ids, date="2026-10-20", status="Absent"),
+        headers=csrf_headers(client),
+    )
+    assert response.status_code == 201
+
+    with app.app_context():
+        notifications = db.session.scalars(
+            select(Notification).where(
+                Notification.student_id == ids["student_a"],
+                Notification.subject_id == ids["subject"],
+            )
+        ).all()
+        assert len(notifications) == 1
+        assert notifications[0].attendance_percentage == 0.0
+
+    assert login(client, "student.a@example.com").status_code == 200
+    response = client.get("/api/notifications")
+    assert response.status_code == 200
+    assert len(response.get_json()) == 1
+
+    faculty_login(client)
+    for day in (21, 22):
+        response = client.post(
+            "/api/attendance",
+            json=attendance_payload(
+                ids, date=f"2026-10-{day}", status="Present"
+            ),
+            headers=csrf_headers(client),
+        )
+        assert response.status_code == 201
+
+    with app.app_context():
+        notifications = db.session.scalars(
+            select(Notification).where(
+                Notification.student_id == ids["student_a"],
+                Notification.subject_id == ids["subject"],
+            )
+        ).all()
+        assert len(notifications) == 1
+        assert notifications[0].attendance_percentage == 66.67
+
+    response = client.post(
+        "/api/attendance",
+        json=attendance_payload(
+            ids, date="2026-10-23", status="Present"
+        ),
+        headers=csrf_headers(client),
+    )
+    assert response.status_code == 201
+
+    with app.app_context():
+        notifications = db.session.scalars(
+            select(Notification).where(
+                Notification.student_id == ids["student_a"],
+                Notification.subject_id == ids["subject"],
+            )
+        ).all()
+        assert notifications == []
+
+
+def test_put_attendance_automatically_updates_notification(client, app):
+    faculty_login(client)
+    ids = app.test_ids
+
+    created = client.post(
+        "/api/attendance",
+        json=attendance_payload(ids, status="Present"),
+        headers=csrf_headers(client),
+    )
+    assert created.status_code == 201
+    attendance_id = created.get_json()["attendance_id"]
+
+    updated = client.put(
+        f"/api/attendance/{attendance_id}",
+        json={"status": "Absent"},
+        headers=csrf_headers(client),
+    )
+    assert updated.status_code == 200
+
+    with app.app_context():
+        notifications = db.session.scalars(
+            select(Notification).where(
+                Notification.student_id == ids["student_a"],
+                Notification.subject_id == ids["subject"],
+            )
+        ).all()
+        assert len(notifications) == 1
+        assert notifications[0].attendance_percentage == 0.0
+
+    updated = client.put(
+        f"/api/attendance/{attendance_id}",
+        json={"status": "Present"},
+        headers=csrf_headers(client),
+    )
+    assert updated.status_code == 200
+
+    with app.app_context():
+        notifications = db.session.scalars(
+            select(Notification).where(
+                Notification.student_id == ids["student_a"],
+                Notification.subject_id == ids["subject"],
+            )
+        ).all()
+        assert notifications == []
 
 
 def test_unenrolled_student_cannot_receive_attendance(client, app):
@@ -442,4 +568,3 @@ def test_attendance_filter_returns_empty_list_when_no_match(client):
 
     assert response.status_code == 200
     assert response.get_json() == []
-

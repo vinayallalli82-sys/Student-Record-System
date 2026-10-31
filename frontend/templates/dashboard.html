@@ -1,3 +1,4 @@
+﻿
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -111,7 +112,6 @@
                 <p id="studentMarksSummaryMessage" class="message" role="status" aria-live="polite"></p>
                 <div id="studentMarksSummaryResults" class="results" aria-live="polite"></div>
             </section>
-
             <section id="adminView" class="card view hidden">
                 <h2>Administrator tools</h2>
                 <p>Manage user accounts, roles, activation status, and faculty subject assignments.</p>
@@ -169,49 +169,82 @@
                 <section id="facultyAttendanceSection">
                     <h3>Faculty attendance management</h3>
                     <p>Record attendance for students enrolled in a subject.</p>
+
                     <label for="attendanceSubject">Subject</label>
                     <select id="attendanceSubject">
                         <option value="">Choose a subject</option>
                     </select>
-                    <label for="attendanceDate">Attendance date</label>
+
+                    <label for="attendanceDate">Attendance date (for recording)</label>
                     <input id="attendanceDate" type="date">
+
+                    <hr>
+
+                    <h4>Filter attendance records</h4>
+                    <p>Filter saved records by subject and date range. This does not change the attendance form above.</p>
+
+                    <label for="attendanceStartDate">Start date</label>
+                    <input id="attendanceStartDate" type="date">
+
+                    <label for="attendanceEndDate">End date</label>
+                    <input id="attendanceEndDate" type="date">
+
+                    <div class="button-row">
+                        <button type="button" id="filterAttendanceButton">Filter records</button>
+                        <button type="button" id="clearAttendanceFilterButton">Clear filters</button>
+                    </div>
+
+                    <p id="attendanceFilterMessage" class="message" role="status" aria-live="polite"></p>
+                    <div id="attendanceFilterResults" class="results" aria-live="polite">
+                        Choose a subject and date range, then select Filter records.
+                    </div>
+
                     <p id="facultyAttendanceMessage" class="message" role="status" aria-live="polite"></p>
                     <div id="facultyAttendanceResults" class="results" aria-live="polite">
                         Choose a subject and date to load enrolled students.
                     </div>
+
                     <button type="button" id="saveAttendanceButton" disabled>Save attendance</button>
                 </section>
 
                 <section id="facultyMarksSection">
                     <h3>Faculty marks management</h3>
                     <p>Enter, review, and update student assessment marks.</p>
+
                     <form id="marksForm">
                         <input type="hidden" id="markId">
+
                         <label for="marksSubject">Subject</label>
                         <select id="marksSubject" required>
                             <option value="">Choose a subject</option>
                         </select>
+
                         <label for="marksStudent">Student</label>
                         <select id="marksStudent" required>
                             <option value="">Choose a student</option>
                         </select>
+
                         <label for="assessmentName">Assessment name</label>
                         <input id="assessmentName" maxlength="100" required>
+
                         <label for="marksObtained">Marks obtained</label>
                         <input id="marksObtained" type="number" min="0" max="9999.99" step="0.01" required>
+
                         <label for="maxMarks">Maximum marks</label>
                         <input id="maxMarks" type="number" min="0.01" max="9999.99" step="0.01" required>
+
                         <button type="submit" id="saveMarksButton">Save marks</button>
                         <button type="button" id="resetMarksButton" class="secondary">Clear form</button>
                     </form>
+
                     <p id="marksMessage" class="message" role="status" aria-live="polite"></p>
+
                     <h3>Saved marks</h3>
                     <button type="button" id="loadMarksButton">Refresh marks</button>
                     <div id="marksResults" class="results" aria-live="polite"></div>
                     <button type="button" id="facultyMarks">Open marks management</button>
                 </section>
 
-                <!-- FR-014: Faculty subject-wise marks summary -->
                 <section id="facultyMarksSummarySection">
                     <hr>
                     <h3>Subject-Wise Marks Summary</h3>
@@ -220,10 +253,12 @@
                         enrolled student, including students whose marks have
                         not been entered yet.
                     </p>
+
                     <label for="summarySubject">Subject</label>
                     <select id="summarySubject">
                         <option value="">Choose a subject</option>
                     </select>
+
                     <button type="button" id="loadSubjectSummary">View Summary</button>
                     <p id="subjectSummaryMessage" class="message" role="status" aria-live="polite"></p>
                     <div id="subjectSummaryResults" class="results" aria-live="polite"></div>
@@ -235,6 +270,39 @@
 
         <p id="globalMessage" class="message" role="status" aria-live="polite"></p>
     </main>
+
+    <div id="notificationModal" class="notification-overlay hidden" aria-hidden="true">
+        <section
+            id="notificationDialog"
+            class="notification-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="notificationHeading"
+            aria-describedby="notificationMessage"
+            tabindex="-1"
+        >
+            <div class="notification-warning-icon" aria-hidden="true">!</div>
+            <p id="notificationCounter" class="notification-counter"></p>
+            <h2 id="notificationHeading">Low Attendance Warning!</h2>
+            <p id="notificationSubject" class="notification-subject"></p>
+            <p id="notificationPercentage" class="notification-percentage"></p>
+            <p class="notification-threshold">
+                Required attendance threshold: <strong>75%</strong>
+            </p>
+            <p id="notificationMessage" class="notification-message"></p>
+            <div class="notification-navigation">
+                <button type="button" id="previousNotification" class="secondary">
+                    Previous
+                </button>
+                <button type="button" id="nextNotification">
+                    Next
+                </button>
+            </div>
+            <button type="button" id="dismissNotification" class="notification-dismiss">
+                Dismiss
+            </button>
+        </section>
+    </div>
 
     <script src="{{ url_for('static', filename='dashboard.js') }}" defer></script>
 </body>

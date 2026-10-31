@@ -91,3 +91,23 @@ CREATE TABLE IF NOT EXISTS marks (
     FOREIGN KEY (subject_id) REFERENCES subjects(subject_id),
     FOREIGN KEY (entered_by) REFERENCES users(user_id)
 );
+
+CREATE TABLE notifications (
+    notification_id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    subject_id INT NOT NULL,
+    attendance_percentage FLOAT NOT NULL,
+    message TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_notification_student
+        FOREIGN KEY (student_id)
+        REFERENCES students(student_id),
+
+    CONSTRAINT fk_notification_subject
+        FOREIGN KEY (subject_id)
+        REFERENCES subjects(subject_id),
+
+    CONSTRAINT uq_notification_student_subject
+        UNIQUE (student_id, subject_id)
+);

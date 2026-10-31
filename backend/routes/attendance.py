@@ -3,7 +3,7 @@
 from datetime import date
 from functools import wraps
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user, login_required
 from sqlalchemy import and_, case, func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -13,6 +13,9 @@ from backend.models.attendance import Attendance
 from backend.models.student import Student
 from backend.models.student_subject import StudentSubject
 from backend.models.subject import Subject
+from backend.services.notification_service import (
+    synchronize_attendance_notification,
+)
 from backend.models.faculty_subject import FacultySubject
 from backend.permissions import subject_permission_error
 
@@ -361,17 +364,22 @@ def save_attendance():
 
     try:
         db.session.add(record)
+        synchronize_attendance_notification(student_id, subject_id)
         db.session.commit()
         return jsonify(attendance_to_dict(record)), 201
 
     except IntegrityError:
         db.session.rollback()
+        current_app.logger.exception(
+            "Attendance conflicts with an existing record"
+        )
         return jsonify({
             "error": "Attendance conflicts with an existing record."
         }), 409
 
     except SQLAlchemyError:
         db.session.rollback()
+        current_app.logger.exception("Failed to save attendance")
         return jsonify({
             "error": "Unable to save attendance."
         }), 500
@@ -409,11 +417,15 @@ def update_attendance(attendance_id):
 
     try:
         record.status = status
+        synchronize_attendance_notification(
+            record.student_id, record.subject_id
+        )
         db.session.commit()
         return jsonify(attendance_to_dict(record)), 200
 
     except SQLAlchemyError:
         db.session.rollback()
+        current_app.logger.exception("Failed to update attendance")
         return jsonify({
             "error": "Unable to update attendance."
         }), 500

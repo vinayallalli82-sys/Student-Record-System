@@ -380,6 +380,104 @@ table tbody tr:hover {
     margin: 8px 8px 0 0;
 }
 
+/* Student notification modal */
+
+.notification-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(15, 23, 42, 0.72);
+}
+
+.notification-dialog {
+    width: min(480px, 100%);
+    max-height: min(90vh, 700px);
+    overflow-y: auto;
+    padding: clamp(24px, 5vw, 40px);
+    color: var(--text);
+    text-align: center;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.32);
+    animation: appear 0.2s ease-out;
+}
+
+.notification-warning-icon {
+    display: grid;
+    width: 58px;
+    height: 58px;
+    margin: 0 auto 14px;
+    place-items: center;
+    color: #92400e;
+    background: #fef3c7;
+    border: 2px solid #f59e0b;
+    border-radius: 50%;
+    font-size: 34px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.notification-counter {
+    margin: 0 0 8px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.notification-dialog h2 {
+    margin: 0 0 16px;
+    color: #991b1b;
+    font-size: clamp(22px, 5vw, 27px);
+}
+
+.notification-subject {
+    margin: 0 0 12px;
+    font-size: 17px;
+    font-weight: 700;
+}
+
+.notification-percentage {
+    margin: 0;
+    color: #b91c1c;
+    font-size: clamp(38px, 10vw, 54px);
+    font-weight: 800;
+    line-height: 1.15;
+}
+
+.notification-threshold {
+    margin: 8px 0 18px;
+    color: var(--muted);
+}
+
+.notification-message {
+    margin: 0 0 22px;
+    padding: 14px;
+    color: #475569;
+    background: #f8fafc;
+    border-radius: 12px;
+    overflow-wrap: anywhere;
+}
+
+.notification-navigation {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.notification-navigation button {
+    flex: 1;
+}
+
+.notification-dismiss {
+    width: 100%;
+}
+
 /* Visibility */
 
 .hidden {

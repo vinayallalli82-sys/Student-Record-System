@@ -3,3 +3,4 @@ from backend.models.student import Student
 from backend.models.subject import Subject
 from backend.models.semester import Semester
 from backend.models.mark import Mark
+from backend.models.notification import Notification
