@@ -34,3 +34,12 @@ class Config:
     )
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    COLLEGE_OPERATING_HOURS = {
+        "monday": ("08:00", "15:15"),
+        "tuesday": ("08:00", "12:20"),
+        "wednesday": ("08:00", "12:20"),
+        "thursday": ("08:00", "15:15"),
+        "friday": ("08:00", "12:20"),
+    }
+
