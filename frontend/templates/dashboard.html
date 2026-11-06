@@ -114,7 +114,7 @@
             </section>
             <section id="adminView" class="card view hidden">
                 <h2>Administrator tools</h2>
-                <p>Manage user accounts, roles, activation status, and faculty subject assignments.</p>
+                <p>Manage user accounts, roles, activation status, faculty subject assignments, and student allocations.</p>
 
                 <section aria-labelledby="adminCreateHeading">
                     <h3 id="adminCreateHeading">Create account</h3>
@@ -148,16 +148,44 @@
                         <select id="adminFacultySelect" required>
                             <option value="">Choose faculty</option>
                         </select>
+                        <label for="adminAssignmentSemester">Semester</label>
+                        <select id="adminAssignmentSemester" required>
+                            <option value="">Choose semester</option>
+                        </select>
                         <label for="adminSubjectSelect">Subject</label>
                         <select id="adminSubjectSelect" required>
                             <option value="">Choose subject</option>
                         </select>
-                        <button type="submit">Assign subject</button>
+                        <button type="submit">Assign faculty</button>
                     </form>
                     <p id="adminAssignmentMessage" class="message" role="status" aria-live="polite"></p>
                     <h3>Current assignments</h3>
                     <button type="button" id="refreshAdminAssignments">Refresh assignments</button>
                     <div id="adminAssignmentsResults" class="results" aria-live="polite"></div>
+                </section>
+
+                <section aria-labelledby="adminStudentAllocationHeading">
+                    <h3 id="adminStudentAllocationHeading">Allocate students to subjects</h3>
+                    <p>Students are allocated to a subject in its semester and inherit that subject's assigned faculty.</p>
+                    <form id="adminStudentAllocationForm">
+                        <label for="adminAllocationStudent">Student</label>
+                        <select id="adminAllocationStudent" required>
+                            <option value="">Choose student</option>
+                        </select>
+                        <label for="adminAllocationSemester">Semester</label>
+                        <select id="adminAllocationSemester" required>
+                            <option value="">Choose semester</option>
+                        </select>
+                        <label for="adminAllocationSubject">Subject</label>
+                        <select id="adminAllocationSubject" required>
+                            <option value="">Choose subject</option>
+                        </select>
+                        <button type="submit">Allocate student</button>
+                    </form>
+                    <p id="adminStudentAllocationMessage" class="message" role="status" aria-live="polite"></p>
+                    <h3>Current student allocations</h3>
+                    <button type="button" id="refreshAdminAllocations">Refresh allocations</button>
+                    <div id="adminStudentAllocationsResults" class="results" aria-live="polite"></div>
                 </section>
             </section>
 
