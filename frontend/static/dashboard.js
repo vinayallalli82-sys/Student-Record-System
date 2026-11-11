@@ -1710,7 +1710,10 @@ async function initializeFacultyMarks() {
     }
 }
 
-/* ADMIN-002: account and faculty assignment management UI */
+/* Administrator account, faculty assignment, and student allocation UI */
+let adminSubjects = [];
+let adminAllocatableSubjects = [];
+
 function makeAdminElement(tag, text, className) {
     const element = document.createElement(tag);
     if (text !== undefined && text !== null) element.textContent = text;
@@ -1718,24 +1721,84 @@ function makeAdminElement(tag, text, className) {
     return element;
 }
 
+function populateSemesterSelect(select, semesters) {
+    const selected = select.value;
+    select.replaceChildren(new Option("Choose semester", ""));
+    semesters.forEach((semester) => {
+        select.add(new Option(
+            `Semester ${semester.semester_number} — ${semester.academic_year}`,
+            String(semester.semester_id)
+        ));
+    });
+    if (semesters.some((semester) => String(semester.semester_id) === selected)) {
+        select.value = selected;
+    }
+}
+
+function populateSubjectSelect(select, subjects, semesterId) {
+    const selected = select.value;
+    select.replaceChildren(new Option("Choose subject", ""));
+    subjects
+        .filter((subject) => String(subject.semester_id) === String(semesterId))
+        .forEach((subject) => {
+            select.add(new Option(
+                `${subject.subject_code} — ${subject.subject_name}`,
+                String(subject.subject_id)
+            ));
+        });
+    if ([...select.options].some((option) => option.value === selected)) {
+        select.value = selected;
+    }
+}
+
 async function loadAdminData() {
     if (!currentUser || currentUser.role !== "Administrator") return;
-    const [users, subjects, assignments] = await Promise.all([
+    const [users, subjects, semesters, students, assignments, allocations] = await Promise.all([
         api("/api/admin/users"),
         api("/api/subjects"),
-        api("/api/admin/faculty-assignments")
+        api("/api/admin/semesters"),
+        api("/api/admin/students"),
+        api("/api/admin/faculty-assignments"),
+        api("/api/admin/student-allocations")
     ]);
+    adminSubjects = subjects;
+    const activeFacultyIds = new Set(
+        users
+            .filter((user) => user.role === "Faculty" && user.is_active)
+            .map((user) => user.user_id)
+    );
+    const activeAssignedSubjectIds = new Set(
+        assignments
+            .filter((assignment) => activeFacultyIds.has(assignment.faculty_id))
+            .map((assignment) => assignment.subject_id)
+    );
+    adminAllocatableSubjects = subjects.filter((subject) =>
+        activeAssignedSubjectIds.has(subject.subject_id)
+    );
+
+    const assignmentSemester = document.getElementById("adminAssignmentSemester");
+    const allocationSemester = document.getElementById("adminAllocationSemester");
+    populateSemesterSelect(assignmentSemester, semesters);
+    populateSemesterSelect(allocationSemester, semesters);
 
     const facultySelect = document.getElementById("adminFacultySelect");
     const subjectSelect = document.getElementById("adminSubjectSelect");
     facultySelect.replaceChildren(new Option("Choose faculty", ""));
-    subjectSelect.replaceChildren(new Option("Choose subject", ""));
     users.filter((user) => user.role === "Faculty" && user.is_active).forEach((user) => {
         facultySelect.add(new Option(user.email, String(user.user_id)));
     });
-    subjects.forEach((subject) => {
-        subjectSelect.add(new Option(`${subject.subject_code} — ${subject.subject_name}`, String(subject.subject_id)));
+    populateSubjectSelect(subjectSelect, subjects, assignmentSemester.value);
+
+    const studentSelect = document.getElementById("adminAllocationStudent");
+    studentSelect.replaceChildren(new Option("Choose student", ""));
+    students.forEach((student) => {
+        studentSelect.add(new Option(
+            `${student.registration_number} — ${student.first_name} ${student.last_name || ""}`.trim(),
+            String(student.student_id)
+        ));
     });
+    const allocationSubjectSelect = document.getElementById("adminAllocationSubject");
+    populateSubjectSelect(allocationSubjectSelect, adminAllocatableSubjects, allocationSemester.value);
 
     const usersContainer = document.getElementById("adminUsersResults");
     usersContainer.replaceChildren();
@@ -1776,7 +1839,38 @@ async function loadAdminData() {
     if (!assignments.length) assignmentsContainer.append(makeAdminElement("p", "No faculty assignments yet."));
     assignments.forEach((assignment) => {
         const row = makeAdminElement("div", null, "admin-assignment-row");
-        row.append(makeAdminElement("span", `${assignment.faculty_email} — ${assignment.subject_code}: ${assignment.subject_name}`));
+        row.append(makeAdminElement(
+            "span",
+            `${assignment.faculty_email} — ${assignment.subject_code}: ${assignment.subject_name} (Semester ${assignment.semester_number}, ${assignment.academic_year})`
+        ));
+        const reassignmentSelect = document.createElement("select");
+        reassignmentSelect.setAttribute("aria-label", `Reassign ${assignment.subject_code}`);
+        reassignmentSelect.add(new Option("Choose replacement faculty", ""));
+        users
+            .filter((user) => user.role === "Faculty" && user.is_active && user.user_id !== assignment.faculty_id)
+            .forEach((user) => reassignmentSelect.add(new Option(user.email, String(user.user_id))));
+        const reassign = makeAdminElement("button", "Reassign faculty", "secondary");
+        reassign.type = "button";
+        reassign.disabled = reassignmentSelect.options.length === 1;
+        reassign.addEventListener("click", async () => {
+            if (!reassignmentSelect.value) {
+                showMessage(document.getElementById("adminAssignmentMessage"), "Choose a replacement Faculty account.", true);
+                return;
+            }
+            try {
+                await api(`/api/admin/faculty-assignments/${assignment.faculty_id}/${assignment.subject_id}`, {
+                    method: "PUT",
+                    body: JSON.stringify({
+                        faculty_id: Number(reassignmentSelect.value),
+                        semester_id: assignment.semester_id
+                    })
+                });
+                showMessage(document.getElementById("adminAssignmentMessage"), "Faculty assignment updated.");
+                await loadAdminData();
+            } catch (error) {
+                showMessage(document.getElementById("adminAssignmentMessage"), error.message, true);
+            }
+        });
         const remove = makeAdminElement("button", "Remove assignment", "secondary");
         remove.type = "button";
         remove.addEventListener("click", async () => {
@@ -1788,10 +1882,92 @@ async function loadAdminData() {
                 showMessage(document.getElementById("adminAssignmentMessage"), error.message, true);
             }
         });
-        row.append(remove);
+        row.append(reassignmentSelect, reassign, remove);
         assignmentsContainer.append(row);
     });
+
+    const allocationsContainer = document.getElementById("adminStudentAllocationsResults");
+    allocationsContainer.replaceChildren();
+    if (!allocations.length) {
+        allocationsContainer.append(makeAdminElement("p", "No student allocations yet."));
+    }
+    allocations.forEach((allocation) => {
+        const row = makeAdminElement("div", null, "admin-assignment-row");
+        const facultyNames = allocation.faculty.map((faculty) => faculty.faculty_email).join(", ");
+        row.append(makeAdminElement(
+            "span",
+            `${allocation.registration_number} — ${allocation.first_name} ${allocation.last_name || ""}: ${allocation.subject_code} (${allocation.subject_name}), Semester ${allocation.semester_number} ${allocation.academic_year}; Faculty: ${facultyNames || "None"}`
+        ));
+        const subjectSelect = document.createElement("select");
+        subjectSelect.setAttribute("aria-label", `Reassign ${allocation.registration_number}`);
+        subjectSelect.add(new Option("Choose replacement subject", ""));
+        adminAllocatableSubjects
+            .filter((subject) => subject.subject_id !== allocation.subject_id)
+            .forEach((subject) => {
+                const semester = semesters.find((item) => item.semester_id === subject.semester_id);
+                const semesterLabel = semester
+                    ? `Semester ${semester.semester_number} ${semester.academic_year}`
+                    : `Semester ID ${subject.semester_id}`;
+                subjectSelect.add(new Option(
+                    `${subject.subject_code} — ${subject.subject_name} (${semesterLabel})`,
+                    String(subject.subject_id)
+                ));
+            });
+        const reassign = makeAdminElement("button", "Reassign subject", "secondary");
+        reassign.type = "button";
+        reassign.addEventListener("click", async () => {
+            const subject = subjects.find((item) => String(item.subject_id) === subjectSelect.value);
+            if (!subject) {
+                showMessage(document.getElementById("adminStudentAllocationMessage"), "Choose a replacement subject.", true);
+                return;
+            }
+            try {
+                await api(`/api/admin/student-allocations/${allocation.student_id}/${allocation.subject_id}`, {
+                    method: "PUT",
+                    body: JSON.stringify({
+                        new_subject_id: subject.subject_id,
+                        semester_id: subject.semester_id
+                    })
+                });
+                showMessage(document.getElementById("adminStudentAllocationMessage"), "Student allocation updated.");
+                await loadAdminData();
+            } catch (error) {
+                showMessage(document.getElementById("adminStudentAllocationMessage"), error.message, true);
+            }
+        });
+        const remove = makeAdminElement("button", "Remove allocation", "secondary");
+        remove.type = "button";
+        remove.addEventListener("click", async () => {
+            try {
+                await api(`/api/admin/student-allocations/${allocation.student_id}/${allocation.subject_id}`, {
+                    method: "DELETE"
+                });
+                showMessage(document.getElementById("adminStudentAllocationMessage"), "Student allocation removed; academic records were preserved.");
+                await loadAdminData();
+            } catch (error) {
+                showMessage(document.getElementById("adminStudentAllocationMessage"), error.message, true);
+            }
+        });
+        row.append(subjectSelect, reassign, remove);
+        allocationsContainer.append(row);
+    });
 }
+
+document.getElementById("adminAssignmentSemester")?.addEventListener("change", () => {
+    populateSubjectSelect(
+        document.getElementById("adminSubjectSelect"),
+        adminSubjects,
+        document.getElementById("adminAssignmentSemester").value
+    );
+});
+
+document.getElementById("adminAllocationSemester")?.addEventListener("change", () => {
+    populateSubjectSelect(
+        document.getElementById("adminAllocationSubject"),
+        adminAllocatableSubjects,
+        document.getElementById("adminAllocationSemester").value
+    );
+});
 
 document.getElementById("adminCreateUserForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1819,18 +1995,38 @@ document.getElementById("adminAssignmentForm")?.addEventListener("submit", async
             method: "POST",
             body: JSON.stringify({
                 faculty_id: Number(document.getElementById("adminFacultySelect").value),
-                subject_id: Number(document.getElementById("adminSubjectSelect").value)
+                subject_id: Number(document.getElementById("adminSubjectSelect").value),
+                semester_id: Number(document.getElementById("adminAssignmentSemester").value)
             })
         });
-        showMessage(document.getElementById("adminAssignmentMessage"), "Faculty assigned to subject.");
+        showMessage(document.getElementById("adminAssignmentMessage"), "Faculty assigned to subject and semester.");
         await loadAdminData();
     } catch (error) {
         showMessage(document.getElementById("adminAssignmentMessage"), error.message, true);
     }
 });
 
+document.getElementById("adminStudentAllocationForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+        await api("/api/admin/student-allocations", {
+            method: "POST",
+            body: JSON.stringify({
+                student_id: Number(document.getElementById("adminAllocationStudent").value),
+                subject_id: Number(document.getElementById("adminAllocationSubject").value),
+                semester_id: Number(document.getElementById("adminAllocationSemester").value)
+            })
+        });
+        showMessage(document.getElementById("adminStudentAllocationMessage"), "Student allocated to subject.");
+        await loadAdminData();
+    } catch (error) {
+        showMessage(document.getElementById("adminStudentAllocationMessage"), error.message, true);
+    }
+});
+
 document.getElementById("refreshAdminUsers")?.addEventListener("click", () => loadAdminData().catch((error) => showMessage(document.getElementById("adminAccountMessage"), error.message, true)));
 document.getElementById("refreshAdminAssignments")?.addEventListener("click", () => loadAdminData().catch((error) => showMessage(document.getElementById("adminAssignmentMessage"), error.message, true)));
+document.getElementById("refreshAdminAllocations")?.addEventListener("click", () => loadAdminData().catch((error) => showMessage(document.getElementById("adminStudentAllocationMessage"), error.message, true)));
 
 /* Navigation with role checks */
 document.querySelectorAll("[data-view]").forEach((button) => {
