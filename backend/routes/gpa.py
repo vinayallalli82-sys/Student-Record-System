@@ -1,9 +1,13 @@
 """FR-004: Semester GPA API."""
 
 from flask import Blueprint, jsonify
+from flask_login import current_user, login_required
 from sqlalchemy import text
 
 from backend.extensions import db
+from backend.permissions import (
+    can_access_student_for_any_assigned_subject,
+)
 from backend.services.gpa_service import calculate_semester_gpa
 
 gpa_bp = Blueprint("gpa", __name__)
@@ -13,25 +17,65 @@ gpa_bp = Blueprint("gpa", __name__)
     "/api/students/<int:student_id>/semesters/<int:semester_number>/gpa",
     methods=["GET"],
 )
+@login_required
 def get_semester_gpa(student_id, semester_number):
     """Return a student's GPA and subject-wise grade details."""
     student = db.session.execute(
-        text("SELECT student_id FROM students WHERE student_id = :sid"),
+        text(
+            "SELECT student_id, user_id FROM students "
+            "WHERE student_id = :sid"
+        ),
         {"sid": student_id},
     ).first()
     if student is None:
         return jsonify({"status": "error", "message": "Student not found"}), 404
 
+    if current_user.role == "Student":
+        if student.user_id != current_user.user_id:
+            return jsonify({
+                "status": "error",
+                "message": "You can only view your own GPA",
+            }), 403
+    elif current_user.role == "Faculty":
+        if not can_access_student_for_any_assigned_subject(student_id):
+            return jsonify({
+                "status": "error",
+                "message": "You are not assigned to this student.",
+            }), 403
+    elif current_user.role != "Administrator":
+        return jsonify({"status": "error", "message": "Access denied"}), 403
+
     semester = db.session.execute(
-        text("SELECT semester_id FROM semesters WHERE semester_number = :number"),
+        text(
+            "SELECT semester_id FROM semesters "
+            "WHERE semester_number = :number"
+        ),
         {"number": semester_number},
     ).first()
     if semester is None:
         return jsonify({"status": "error", "message": "Semester not found"}), 404
 
+    faculty_subject_filter = ""
+    query_parameters = {
+        "sid": student_id,
+        "semid": semester.semester_id,
+    }
+    if current_user.role == "Faculty":
+        faculty_subject_filter = """
+            AND EXISTS (
+                SELECT 1
+                FROM student_subjects ss
+                JOIN faculty_subjects fs ON fs.subject_id = ss.subject_id
+                WHERE ss.student_id = :sid
+                    AND ss.subject_id = s.subject_id
+                    AND fs.faculty_id = :faculty_id
+            )
+        """
+        query_parameters["faculty_id"] = current_user.user_id
+
     rows = db.session.execute(
         text(
-            """
+            f"""
             SELECT
                 s.subject_id,
                 s.subject_code,
@@ -44,6 +88,7 @@ def get_semester_gpa(student_id, semester_number):
                 ON m.subject_id = s.subject_id
                 AND m.student_id = :sid
             WHERE s.semester_id = :semid
+                {faculty_subject_filter}
             GROUP BY
                 s.subject_id,
                 s.subject_code,
@@ -52,7 +97,7 @@ def get_semester_gpa(student_id, semester_number):
             ORDER BY s.subject_code
             """
         ),
-        {"sid": student_id, "semid": semester.semester_id},
+        query_parameters,
     ).mappings().all()
 
     graded = []

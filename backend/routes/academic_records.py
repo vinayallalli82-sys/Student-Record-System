@@ -9,8 +9,12 @@ from backend.models.attendance import Attendance
 from backend.models.mark import Mark
 from backend.models.semester import Semester
 from backend.models.student import Student
+from backend.models.student_subject import StudentSubject
 from backend.models.subject import Subject
-from backend.services.gpa_service import marks_to_grade
+from backend.services.gpa_service import (
+    calculate_semester_gpa,
+    marks_to_grade,
+)
 from backend.services.academic_records_pdf import (
     generate_academic_records_pdf,
 )
@@ -62,8 +66,15 @@ def get_student_academic_records():
         .order_by(Subject.subject_code)
         .all()
     )
+    allocated_subject_ids = {
+        subject_id
+        for (subject_id,) in db.session.query(StudentSubject.subject_id)
+        .filter_by(student_id=student.student_id)
+        .all()
+    }
 
     records = []
+    graded_subjects = []
 
     for subject in subjects:
         marks = (
@@ -75,6 +86,8 @@ def get_student_academic_records():
             .order_by(Mark.assessment_name)
             .all()
         )
+        if not marks and subject.subject_id not in allocated_subject_ids:
+            continue
 
         total_obtained = sum(
             (mark.marks_obtained for mark in marks),
@@ -85,6 +98,16 @@ def get_student_academic_records():
             (mark.max_marks for mark in marks),
             start=0,
         )
+
+        if marks:
+            graded_subjects.append({
+                "subject_id": subject.subject_id,
+                "code": subject.subject_code,
+                "subject_name": subject.subject_name,
+                "credits": subject.credits,
+                "marks": total_obtained,
+                "max_marks": total_max,
+            })
 
         assessments = []
 
@@ -139,6 +162,11 @@ def get_student_academic_records():
             "assessments": assessments,
             "total_marks_obtained": float(total_obtained),
             "total_max_marks": float(total_max),
+            "percentage": (
+                round(float(total_obtained / total_max * 100), 2)
+                if total_max
+                else None
+            ),
             "attendance": {
                 "total_classes": total_classes,
                 "classes_attended": classes_attended,
@@ -146,6 +174,11 @@ def get_student_academic_records():
             },
         })
 
+    gpa = (
+        calculate_semester_gpa(graded_subjects)
+        if graded_subjects
+        else None
+    )
     has_records = bool(records)
 
     message = (
@@ -157,10 +190,18 @@ def get_student_academic_records():
     return {
         "status": "success",
         "student_id": student.student_id,
+        "registration_number": student.registration_number,
+        "student_name": f"{student.first_name} {student.last_name}".strip(),
         "semester": semester.semester_number,
         "academic_year": semester.academic_year,
         "message": message,
         "subjects": records,
+        "gpa": gpa,
+        "subjects_without_marks": [
+            record["subject_code"]
+            for record in records
+            if record["total_max_marks"] == 0
+        ],
     }, None
 
 
