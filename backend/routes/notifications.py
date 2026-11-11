@@ -7,7 +7,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from backend.extensions import db
 from backend.models.notification import Notification
 from backend.models.student import Student
+from backend.models.student_subject import StudentSubject
+from backend.models.semester import Semester
 from backend.models.subject import Subject
+from backend.permissions import subject_permission_error
 from backend.services.notification_service import (
     synchronize_attendance_notification,
 )
@@ -38,6 +41,19 @@ def check_attendance(student_id, subject_id):
 
     if subject is None:
         return jsonify({"error": "Subject not found."}), 404
+
+    if current_user.role == "Faculty":
+        permission_error = subject_permission_error(subject_id)
+        if permission_error:
+            return permission_error
+
+    enrollment = db.session.get(
+        StudentSubject, (student_id, subject_id)
+    )
+    if enrollment is None:
+        return jsonify({
+            "error": "Student is not enrolled in this subject."
+        }), 400
 
     try:
         result = synchronize_attendance_notification(
@@ -71,19 +87,25 @@ def get_notifications():
     if student is None:
         return jsonify({"error": "Student record not found."}), 404
 
-    notifications = db.session.scalars(
-        select(Notification)
-        .where(Notification.student_id == student.student_id)
+    notifications = (
+        db.session.query(Notification, Subject, Semester)
+        .join(Subject, Subject.subject_id == Notification.subject_id)
+        .join(Semester, Semester.semester_id == Subject.semester_id)
+        .filter(Notification.student_id == student.student_id)
         .order_by(Notification.created_at.desc())
-    ).all()
+        .all()
+    )
 
     return jsonify([
         {
             "notification_id": item.notification_id,
             "subject_id": item.subject_id,
+            "subject_code": subject.subject_code,
+            "subject_name": subject.subject_name,
+            "semester_number": semester.semester_number,
             "attendance_percentage": item.attendance_percentage,
             "message": item.message,
             "created_at": item.created_at.isoformat(),
         }
-        for item in notifications
+        for item, subject, semester in notifications
     ]), 200

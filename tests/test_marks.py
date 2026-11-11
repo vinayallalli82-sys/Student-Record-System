@@ -94,6 +94,47 @@ def test_faculty_can_create_marks(client, app):
     assert data["entered_by"] == app.test_ids["faculty"]
 
 
+@pytest.mark.parametrize("assessment_name", ["ISA 1", "ISA 2", "ESA"])
+def test_faculty_can_create_each_canonical_assessment(
+    client, app, assessment_name
+):
+    faculty_login(client)
+    payload = marks_payload(app.test_ids)
+    payload["assessment_name"] = assessment_name
+
+    response = client.post(
+        "/api/marks/",
+        json=payload,
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["assessment_name"] == assessment_name
+
+
+@pytest.mark.parametrize("assessment_name", ["Internal Test", "ISA 3", ""])
+def test_create_marks_rejects_noncanonical_assessment(
+    client, app, assessment_name
+):
+    faculty_login(client)
+    payload = marks_payload(app.test_ids)
+    payload["assessment_name"] = assessment_name
+
+    response = client.post(
+        "/api/marks/",
+        json=payload,
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 400
+    expected_error = (
+        "Assessment name cannot be empty."
+        if not assessment_name
+        else "Assessment name must be ISA 1, ISA 2, or ESA."
+    )
+    assert response.get_json()["error"] == expected_error
+
+
 def test_faculty_can_update_marks(client, app):
     faculty_login(client)
     ids = app.test_ids
@@ -107,14 +148,20 @@ def test_faculty_can_update_marks(client, app):
 
     mark_id = create_response.get_json()["mark_id"]
 
+    payload = marks_payload(ids, obtained=40)
+    payload["assessment_name"] = "ESA"
     response = client.put(
         f"/api/marks/{mark_id}",
-        json=marks_payload(ids, obtained=40),
+        json=payload,
         headers=csrf_headers(client),
     )
 
     assert response.status_code == 200
+    assert response.get_json()["mark_id"] == mark_id
+    assert response.get_json()["assessment_name"] == "ESA"
     assert response.get_json()["marks_obtained"] == 40.0
+    listed = client.get(f"/api/marks/?subject_id={ids['subject']}").get_json()
+    assert sum(mark["assessment_name"] == "ESA" for mark in listed) == 1
 
 
 def test_marks_above_maximum_are_rejected(client, app):
@@ -151,6 +198,70 @@ def test_invalid_update_preserves_existing_marks(client, app):
     with app.app_context():
         saved_mark = db.session.get(Mark, mark_id)
         assert float(saved_mark.marks_obtained) == 30.0
+
+
+def test_update_rejects_noncanonical_assessment_without_changing_record(
+    client, app
+):
+    faculty_login(client)
+    ids = app.test_ids
+    created = client.post(
+        "/api/marks/",
+        json=marks_payload(ids, obtained=30),
+        headers=csrf_headers(client),
+    )
+    assert created.status_code == 201
+    mark_id = created.get_json()["mark_id"]
+    payload = marks_payload(ids, obtained=40)
+    payload["assessment_name"] = "Historical assessment"
+
+    response = client.put(
+        f"/api/marks/{mark_id}",
+        json=payload,
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 400
+    with app.app_context():
+        saved_mark = db.session.get(Mark, mark_id)
+        assert saved_mark.assessment_name == "ISA 1"
+        assert float(saved_mark.marks_obtained) == 30.0
+
+
+@pytest.mark.parametrize("assessment_name", ["Midterm Exam", "Quiz 1"])
+def test_historical_assessment_records_cannot_be_modified(
+    client, app, assessment_name
+):
+    faculty_login(client)
+    ids = app.test_ids
+    with app.app_context():
+        historical_mark = Mark(
+            student_id=ids["student_a"],
+            subject_id=ids["subject"],
+            assessment_name=assessment_name,
+            marks_obtained=35,
+            max_marks=50,
+            entered_by=ids["faculty"],
+        )
+        db.session.add(historical_mark)
+        db.session.commit()
+        mark_id = historical_mark.mark_id
+
+    response = client.put(
+        f"/api/marks/{mark_id}",
+        json=marks_payload(ids, obtained=40),
+        headers=csrf_headers(client),
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["error"] == (
+        "Historical assessment records cannot be modified."
+    )
+    with app.app_context():
+        saved_mark = db.session.get(Mark, mark_id)
+        assert saved_mark.assessment_name == assessment_name
+        assert float(saved_mark.marks_obtained) == 35.0
+        assert float(saved_mark.max_marks) == 50.0
 
 
 @pytest.mark.parametrize(
@@ -313,4 +424,40 @@ def test_faculty_can_list_saved_marks(client, app):
         and mark["subject_id"] == ids["subject"]
         and mark["assessment_name"] == "ISA 1"
         for mark in data
+    )
+
+
+def test_historical_assessment_records_remain_visible(client, app):
+    faculty_login(client)
+    ids = app.test_ids
+    with app.app_context():
+        db.session.add(Mark(
+            student_id=ids["student_a"],
+            subject_id=ids["subject"],
+            assessment_name="Historical assessment",
+            marks_obtained=30,
+            max_marks=50,
+        ))
+        db.session.commit()
+
+    marks_response = client.get(
+        f"/api/marks/?subject_id={ids['subject']}"
+    )
+    summary_response = client.get(
+        f"/api/marks/summary?subject_id={ids['subject']}"
+    )
+
+    assert marks_response.status_code == 200
+    assert any(
+        mark["assessment_name"] == "Historical assessment"
+        for mark in marks_response.get_json()
+    )
+    assert summary_response.status_code == 200
+    student = next(
+        student for student in summary_response.get_json()["students"]
+        if student["student_id"] == ids["student_a"]
+    )
+    assert any(
+        assessment["assessment_name"] == "Historical assessment"
+        for assessment in student["assessments"]
     )

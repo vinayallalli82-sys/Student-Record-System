@@ -129,6 +129,19 @@
                             <option value="Faculty">Faculty</option>
                             <option value="Administrator">Administrator</option>
                         </select>
+                        <fieldset id="adminStudentProfileFields" disabled hidden>
+                            <legend>Student profile (required for Student accounts)</legend>
+                            <label for="adminStudentRegistrationNumber">Registration number</label>
+                            <input id="adminStudentRegistrationNumber" maxlength="30" required>
+                            <label for="adminStudentFirstName">First name</label>
+                            <input id="adminStudentFirstName" maxlength="100" required>
+                            <label for="adminStudentLastName">Last name</label>
+                            <input id="adminStudentLastName" maxlength="100">
+                            <label for="adminStudentCourse">Course or department</label>
+                            <input id="adminStudentCourse" maxlength="100" required>
+                            <label for="adminStudentAdmissionYear">Admission year</label>
+                            <input id="adminStudentAdmissionYear" type="number" min="1" max="9999" step="1" required>
+                        </fieldset>
                         <button type="submit">Create account</button>
                     </form>
                     <p id="adminAccountMessage" class="message" role="status" aria-live="polite"></p>
@@ -237,7 +250,7 @@
 
                 <section id="facultyMarksSection">
                     <h3>Faculty marks management</h3>
-                    <p>Enter, review, and update student assessment marks.</p>
+                    <p>Enter canonical assessment marks. Historical assessment records remain available for review and cannot be edited.</p>
 
                     <form id="marksForm">
                         <input type="hidden" id="markId">
@@ -253,7 +266,12 @@
                         </select>
 
                         <label for="assessmentName">Assessment name</label>
-                        <input id="assessmentName" maxlength="100" required>
+                        <select id="assessmentName" required>
+                            <option value="">Choose an assessment</option>
+                            <option value="ISA 1">ISA 1</option>
+                            <option value="ISA 2">ISA 2</option>
+                            <option value="ESA">ESA</option>
+                        </select>
 
                         <label for="marksObtained">Marks obtained</label>
                         <input id="marksObtained" type="number" min="0" max="9999.99" step="0.01" required>

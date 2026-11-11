@@ -18,6 +18,7 @@ from backend.permissions import subject_permission_error
 
 
 marks_bp = Blueprint("marks", __name__, url_prefix="/api/marks")
+VALID_ASSESSMENT_NAMES = frozenset({"ISA 1", "ISA 2", "ESA"})
 
 def faculty_required(view_function):
     """Allow only authenticated faculty to manage and view marks."""
@@ -71,8 +72,8 @@ def parse_marks(data):
 
     assessment_name = assessment_name.strip()
 
-    if len(assessment_name) > 100:
-        return None, "Assessment name cannot exceed 100 characters."
+    if assessment_name not in VALID_ASSESSMENT_NAMES:
+        return None, "Assessment name must be ISA 1, ISA 2, or ESA."
 
     try:
         obtained = Decimal(str(data["marks_obtained"]))
@@ -357,6 +358,11 @@ def update_mark(mark_id):
     permission_error = subject_permission_error(mark.subject_id)
     if permission_error:
         return permission_error
+
+    if mark.assessment_name not in VALID_ASSESSMENT_NAMES:
+        return jsonify({
+            "error": "Historical assessment records cannot be modified.",
+        }), 409
 
     permission_error = subject_permission_error(data["subject_id"])
     if permission_error:

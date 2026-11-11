@@ -1,6 +1,8 @@
 """Administrator account, faculty assignment, and student allocation APIs."""
 
+from datetime import date
 from functools import wraps
+import re
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user, login_required
@@ -32,6 +34,72 @@ def administrator_required(view):
 
 def user_to_dict(user):
     return {"user_id": user.user_id, "email": user.email, "role": user.role, "is_active": user.is_active}
+
+
+def validate_student_profile(data, require_date_of_birth=False):
+    profile = data.get("student_profile")
+    if not isinstance(profile, dict):
+        return None, "student_profile with registration_number, first_name, course, and admission_year is required."
+
+    registration_number = profile.get("registration_number")
+    first_name = profile.get("first_name")
+    last_name = profile.get("last_name", "")
+    course = profile.get("course")
+    admission_year = profile.get("admission_year")
+    raw_date_of_birth = profile.get("date_of_birth")
+
+    if not isinstance(registration_number, str) or not registration_number.strip():
+        return None, "A registration number is required."
+    if not isinstance(first_name, str) or not first_name.strip():
+        return None, "A first name is required."
+    if not isinstance(last_name, str):
+        return None, "Last name must be a string."
+    if require_date_of_birth and not last_name.strip():
+        return None, "A last name is required for Student accounts."
+    if require_date_of_birth and not isinstance(raw_date_of_birth, str):
+        return None, "A date of birth is required for Student accounts."
+    if raw_date_of_birth in (None, ""):
+        date_of_birth = None
+    elif not isinstance(raw_date_of_birth, str):
+        return None, "Date of birth must use YYYY-MM-DD format."
+    else:
+        try:
+            date_of_birth = date.fromisoformat(raw_date_of_birth)
+        except ValueError:
+            return None, "Date of birth must be a valid date in YYYY-MM-DD format."
+        if date_of_birth.isoformat() != raw_date_of_birth:
+            return None, "Date of birth must use YYYY-MM-DD format."
+        if date_of_birth > date.today():
+            return None, "Date of birth cannot be in the future."
+    if not isinstance(course, str) or not course.strip():
+        return None, "A course or department is required."
+    if (
+        isinstance(admission_year, bool)
+        or not isinstance(admission_year, int)
+        or admission_year <= 0
+    ):
+        return None, "A positive admission year is required."
+
+    registration_number = registration_number.strip()
+    if len(registration_number) > 30:
+        return None, "Registration number must be 30 characters or fewer."
+    if len(first_name.strip()) > 100 or len(last_name.strip()) > 100:
+        return None, "Student names must be 100 characters or fewer."
+    if len(course.strip()) > 100:
+        return None, "Course or department must be 100 characters or fewer."
+    if Student.query.filter(
+        func.lower(Student.registration_number) == registration_number.lower()
+    ).first():
+        return None, "Registration number already exists."
+
+    return {
+        "registration_number": registration_number,
+        "first_name": first_name.strip(),
+        "last_name": last_name.strip() or None,
+        "date_of_birth": date_of_birth,
+        "course": course.strip(),
+        "admission_year": admission_year,
+    }, None
 
 
 def positive_integer(data, field):
@@ -148,18 +216,95 @@ def list_users():
 @admin_bp.get("/students")
 @administrator_required
 def list_students():
-    students = Student.query.order_by(
-        Student.registration_number, Student.student_id
-    ).all()
+    students = (
+        db.session.query(Student, User.email)
+        .outerjoin(User, User.user_id == Student.user_id)
+        .order_by(Student.registration_number, Student.student_id)
+        .all()
+    )
     return jsonify([
         {
             "student_id": student.student_id,
             "registration_number": student.registration_number,
             "first_name": student.first_name,
             "last_name": student.last_name,
+            "email": email,
+            "course": student.course,
+            "admission_year": student.admission_year,
+            "date_of_birth": (
+                student.date_of_birth.isoformat()
+                if student.date_of_birth else None
+            ),
         }
-        for student in students
+        for student, email in students
     ]), 200
+
+
+@admin_bp.get("/students/orphan-accounts")
+@administrator_required
+def list_orphan_student_accounts():
+    accounts = (
+        db.session.query(User)
+        .outerjoin(Student, Student.user_id == User.user_id)
+        .filter(User.role == "Student", Student.student_id.is_(None))
+        .order_by(User.email)
+        .all()
+    )
+    return jsonify([
+        {
+            "user_id": user.user_id,
+            "email": user.email,
+            "is_active": user.is_active,
+        }
+        for user in accounts
+    ]), 200
+
+
+@admin_bp.post("/students/<int:user_id>/profile")
+@administrator_required
+def reconcile_student_profile(user_id):
+    user = db.session.get(User, user_id)
+    if user is None:
+        return jsonify({"error": "User account not found."}), 404
+    if user.role != "Student":
+        return jsonify({"error": "A Student account is required."}), 400
+    if Student.query.filter_by(user_id=user_id).first() is not None:
+        return jsonify({"error": "This Student account already has a profile."}), 409
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Request body must be a JSON object."}), 400
+    profile, error = validate_student_profile({"student_profile": data})
+    if error:
+        return jsonify({"error": error}), 400
+
+    student = Student(user_id=user.user_id, **profile)
+    db.session.add(student)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({
+            "error": "Student profile conflicts with an existing user or registration number."
+        }), 409
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("Failed to reconcile a Student profile")
+        return jsonify({"error": "Unable to create the Student profile."}), 500
+
+    return jsonify({
+        "message": "Student profile created successfully.",
+        "student": {
+            "student_id": student.student_id,
+            "user_id": student.user_id,
+            "registration_number": student.registration_number,
+            "first_name": student.first_name,
+            "last_name": student.last_name,
+            "email": user.email,
+            "course": student.course,
+            "admission_year": student.admission_year,
+        },
+    }), 201
 
 
 @admin_bp.get("/semesters")
@@ -186,27 +331,146 @@ def list_semesters():
     ]), 200
 
 
+@admin_bp.post("/semesters")
+@administrator_required
+def create_semester():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Request body must be a JSON object."}), 400
+
+    semester_number = data.get("semester_number")
+    academic_year = data.get("academic_year")
+    if (
+        isinstance(semester_number, bool)
+        or not isinstance(semester_number, int)
+        or not 1 <= semester_number <= 12
+    ):
+        return jsonify({
+            "error": "Semester number must be a positive integer from 1 to 12."
+        }), 400
+    if not isinstance(academic_year, str) or not re.fullmatch(
+        r"[0-9]{4}-[0-9]{4}", academic_year
+    ):
+        return jsonify({
+            "error": "Academic year must use YYYY-YYYY format."
+        }), 400
+
+    dates = {}
+    for field in ("start_date", "end_date"):
+        value = data.get(field)
+        if value in (None, ""):
+            dates[field] = None
+            continue
+        if not isinstance(value, str):
+            return jsonify({
+                "error": f"{field.replace('_', ' ').capitalize()} must use YYYY-MM-DD format."
+            }), 400
+        try:
+            parsed = date.fromisoformat(value)
+        except ValueError:
+            return jsonify({
+                "error": f"{field.replace('_', ' ').capitalize()} must be a valid date in YYYY-MM-DD format."
+            }), 400
+        if parsed.isoformat() != value:
+            return jsonify({
+                "error": f"{field.replace('_', ' ').capitalize()} must use YYYY-MM-DD format."
+            }), 400
+        dates[field] = parsed
+
+    if (
+        dates["start_date"] is not None
+        and dates["end_date"] is not None
+        and dates["end_date"] <= dates["start_date"]
+    ):
+        return jsonify({
+            "error": "End date must be later than start date."
+        }), 400
+    if Semester.query.filter_by(semester_number=semester_number).first():
+        return jsonify({
+            "error": f"Semester {semester_number} is already configured."
+        }), 409
+
+    semester = Semester(
+        semester_number=semester_number,
+        academic_year=academic_year,
+        **dates,
+    )
+    db.session.add(semester)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({
+            "error": f"Semester {semester_number} is already configured."
+        }), 409
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("Failed to create a semester")
+        return jsonify({"error": "Unable to create the semester."}), 500
+
+    return jsonify({
+        "message": "Semester created successfully.",
+        "semester": {
+            "semester_id": semester.semester_id,
+            "semester_number": semester.semester_number,
+            "academic_year": semester.academic_year,
+            "start_date": (
+                semester.start_date.isoformat()
+                if semester.start_date else None
+            ),
+            "end_date": (
+                semester.end_date.isoformat()
+                if semester.end_date else None
+            ),
+        },
+    }), 201
+
+
 @admin_bp.post("/users")
 @administrator_required
 def create_user():
     data = request.get_json(silent=True) or {}
     email, password, role = data.get("email"), data.get("password"), data.get("role")
-    if not isinstance(email, str) or not email.strip():
+    if (
+        not isinstance(email, str)
+        or not email.strip()
+        or "@" not in email
+        or "." not in email.rsplit("@", 1)[-1]
+        or any(character.isspace() for character in email)
+    ):
         return jsonify({"error": "A valid email is required."}), 400
+    if len(email.strip()) > 255:
+        return jsonify({"error": "Email must be 255 characters or fewer."}), 400
     if not isinstance(password, str) or len(password) < 8:
         return jsonify({"error": "Password must contain at least 8 characters."}), 400
     if role not in VALID_ROLES:
         return jsonify({"error": "Invalid role."}), 400
+    profile = None
+    if role == "Student":
+        profile, error = validate_student_profile(
+            data, require_date_of_birth=True
+        )
+        if error:
+            return jsonify({"error": error}), 400
     email = email.strip().lower()
     if User.query.filter(func.lower(User.email) == email).first():
         return jsonify({"error": "Email already exists."}), 409
     user = User(email=email, password_hash=generate_password_hash(password), role=role, is_active=True)
     db.session.add(user)
     try:
+        db.session.flush()
+        if profile is not None:
+            db.session.add(Student(user_id=user.user_id, **profile))
         db.session.commit()
-    except Exception:
+    except IntegrityError:
         db.session.rollback()
-        raise
+        return jsonify({
+            "error": "User or Student profile conflicts with an existing account or registration number."
+        }), 409
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("Failed to create a user account")
+        return jsonify({"error": "Unable to create the user account."}), 500
     return jsonify({"message": "User created successfully.", "user": user_to_dict(user)}), 201
 
 
@@ -223,6 +487,13 @@ def update_user(user_id):
     active = data.get("is_active", user.is_active)
     if role not in VALID_ROLES:
         return jsonify({"error": "Invalid role."}), 400
+    if (
+        role == "Student"
+        and Student.query.filter_by(user_id=user.user_id).first() is None
+    ):
+        return jsonify({
+            "error": "Create a Student account with profile details using the account creation form instead of changing an existing account's role."
+        }), 409
     if not isinstance(active, bool):
         return jsonify({"error": "is_active must be true or false."}), 400
     if user.user_id == current_user.user_id and (role != "Administrator" or not active):

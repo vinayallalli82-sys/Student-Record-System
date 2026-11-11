@@ -1,5 +1,5 @@
 
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
@@ -679,3 +679,103 @@ def test_attendance_filter_returns_empty_list_when_no_match(client):
 
     assert response.status_code == 200
     assert response.get_json() == []
+
+
+def test_student_semesters_and_subjects_are_limited_to_own_allocations(
+    client, app
+):
+    ids = app.test_ids
+    with app.app_context():
+        semester_two = Semester(
+            semester_number=2,
+            academic_year="2026-2027",
+        )
+        unused_semester = Semester(
+            semester_number=3,
+            academic_year="2026-2027",
+        )
+        db.session.add_all([semester_two, unused_semester])
+        db.session.flush()
+        subject_two = Subject(
+            subject_code="TEST201",
+            subject_name="Second Semester Subject",
+            credits=4.0,
+            semester_id=semester_two.semester_id,
+        )
+        db.session.add(subject_two)
+        db.session.flush()
+
+        first_enrollment = db.session.get(
+            StudentSubject, (ids["student_a"], ids["subject"])
+        )
+        first_enrollment.enrolled_at = datetime(2026, 1, 1)
+        db.session.add(StudentSubject(
+            student_id=ids["student_a"],
+            subject_id=subject_two.subject_id,
+            enrolled_at=datetime(2026, 2, 1),
+        ))
+        db.session.add(Attendance(
+            student_id=ids["student_a"],
+            subject_id=ids["subject"],
+            attendance_date=date(2026, 10, 1),
+            status="Present",
+        ))
+        db.session.commit()
+        semester_two_id = semester_two.semester_id
+        subject_two_id = subject_two.subject_id
+
+    assert login(client, "student.a@example.com").status_code == 200
+
+    semesters = client.get("/api/students/me/semesters")
+    assert semesters.status_code == 200
+    assert [item["semester_number"] for item in semesters.get_json()["semesters"]] == [1, 2, 3]
+    assert semesters.get_json()["latest_semester_id"] == semester_two_id
+
+    filtered_profile = client.get(
+        f"/api/students/me?semester_id={semester_two_id}"
+    )
+    assert filtered_profile.status_code == 200
+    assert [item["subject_id"] for item in filtered_profile.get_json()["subjects"]] == [
+        subject_two_id
+    ]
+
+    filtered_attendance = client.get(
+        f"/api/attendance/my?semester_id={semester_two_id}"
+    )
+    assert filtered_attendance.status_code == 200
+    assert filtered_attendance.get_json() == []
+
+    semester_one_profile = client.get("/api/students/me?semester_id=1")
+    assert [item["subject_id"] for item in semester_one_profile.get_json()["subjects"]] == [
+        ids["subject"]
+    ]
+    semester_one_attendance = client.get("/api/attendance/my?semester_id=1")
+    assert [
+        item["subject_id"] for item in semester_one_attendance.get_json()
+    ] == [ids["subject"]]
+
+    assert client.post(
+        "/api/auth/logout",
+        headers=csrf_headers(client),
+    ).status_code == 200
+    assert login(client, "student.b@example.com").status_code == 200
+    other_student_profile = client.get(
+        f"/api/students/me?semester_id={semester_two_id}"
+    )
+    assert other_student_profile.get_json()["subjects"] == []
+    assert client.get("/api/attendance/my").get_json() == []
+
+
+def test_student_semester_filters_validate_input_and_role(client):
+    assert client.get("/api/students/me/semesters").status_code == 401
+    assert login(client, "student.a@example.com").status_code == 200
+    assert client.get("/api/students/me?semester_id=invalid").status_code == 400
+    assert client.get("/api/attendance/my?semester_id=0").status_code == 400
+
+    logout_response = client.post(
+        "/api/auth/logout",
+        headers=csrf_headers(client),
+    )
+    assert logout_response.status_code == 200
+    assert login(client, "faculty@example.com", "FacultyTest123!").status_code == 200
+    assert client.get("/api/students/me/semesters").status_code == 403

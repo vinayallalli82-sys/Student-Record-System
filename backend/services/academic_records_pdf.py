@@ -60,6 +60,16 @@ def generate_academic_records_pdf(data):
         f"<b>Student ID:</b> {data['student_id']}",
         styles["Normal"],
     ))
+    if data.get("student_name"):
+        story.append(Paragraph(
+            f"<b>Student:</b> {data['student_name']}",
+            styles["Normal"],
+        ))
+    if data.get("registration_number"):
+        story.append(Paragraph(
+            f"<b>Registration number:</b> {data['registration_number']}",
+            styles["Normal"],
+        ))
     story.append(Paragraph(
         f"<b>Semester:</b> {data['semester']}",
         styles["Normal"],
@@ -68,6 +78,18 @@ def generate_academic_records_pdf(data):
         f"<b>Academic Year:</b> {data['academic_year']}",
         styles["Normal"],
     ))
+    gpa = data.get("gpa")
+    if gpa:
+        story.append(Paragraph(
+            f"<b>Semester GPA:</b> {gpa['gpa']} "
+            f"({gpa['total_credits']} credits counted)",
+            styles["Normal"],
+        ))
+    else:
+        story.append(Paragraph(
+            "<b>Semester GPA:</b> Not available (no marks recorded)",
+            styles["Normal"],
+        ))
     story.append(Spacer(1, 12))
 
     subjects = data.get("subjects", [])
@@ -95,6 +117,7 @@ def generate_academic_records_pdf(data):
             "Maximum Marks",
             "Percentage",
             "Grade",
+            "Grade Point",
         ]]
 
         for assessment in subject.get("assessments", []):
@@ -104,13 +127,14 @@ def generate_academic_records_pdf(data):
                 str(assessment["max_marks"]),
                 f"{assessment['percentage']}%",
                 assessment["grade"],
+                str(assessment["grade_point"]),
             ])
 
         if len(assessment_rows) > 1:
             assessment_table = Table(
                 assessment_rows,
                 repeatRows=1,
-                colWidths=[45 * mm, 28 * mm, 28 * mm, 25 * mm, 20 * mm],
+                colWidths=[38 * mm, 25 * mm, 25 * mm, 22 * mm, 16 * mm, 18 * mm],
             )
             assessment_table.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#24476B")),
@@ -131,7 +155,8 @@ def generate_academic_records_pdf(data):
         story.append(Paragraph(
             f"<b>Total Marks:</b> "
             f"{subject['total_marks_obtained']} / "
-            f"{subject['total_max_marks']}",
+            f"{subject['total_max_marks']} "
+            f"({subject.get('percentage') if subject.get('percentage') is not None else '—'}%)",
             styles["Normal"],
         ))
 
