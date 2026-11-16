@@ -1,9 +1,14 @@
 import pytest
+from werkzeug.security import generate_password_hash
 
 from backend.extensions import db
 from backend.models.mark import Mark
 from backend.models.semester import Semester
+from backend.models.faculty_subject import FacultySubject
+from backend.models.student import Student
+from backend.models.student_subject import StudentSubject
 from backend.models.subject import Subject
+from backend.models.user import User
 
 from test_attendance import (
     app as attendance_app_fixture,
@@ -103,6 +108,16 @@ def test_cgpa_is_weighted_by_subject_credits(client, app):
         )
         db.session.add(second_subject)
         db.session.flush()
+        db.session.add_all([
+            StudentSubject(
+                student_id=ids["student_a"],
+                subject_id=second_subject.subject_id,
+            ),
+            FacultySubject(
+                faculty_id=ids["faculty"],
+                subject_id=second_subject.subject_id,
+            ),
+        ])
 
         add_mark(ids["student_a"], ids["subject"], 90, 100)
         add_mark(ids["student_a"], second_subject.subject_id, 80, 100)
@@ -119,6 +134,81 @@ def test_cgpa_is_weighted_by_subject_credits(client, app):
     assert data["cgpa"] == 9.43
     assert data["total_credits"] == 7.0
     assert data["subjects_count"] == 2
+
+
+def test_faculty_cgpa_excludes_unassigned_subjects(client, app):
+    ids = app.test_ids
+
+    with app.app_context():
+        second_subject = Subject(
+            subject_code="TEST203",
+            subject_name="Unassigned Test Subject",
+            credits=4.0,
+            semester_id=1,
+        )
+        db.session.add(second_subject)
+        db.session.flush()
+        db.session.add(StudentSubject(
+            student_id=ids["student_a"],
+            subject_id=second_subject.subject_id,
+        ))
+        add_mark(ids["student_a"], ids["subject"], 85, 100)
+        add_mark(ids["student_a"], second_subject.subject_id, 0, 100)
+        db.session.commit()
+
+    faculty_login(client)
+    response = client.get(f"/api/students/{ids['student_a']}/cgpa")
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["cgpa"] == 9.0
+    assert data["subjects_count"] == 1
+    assert [subject["code"] for subject in data["subjects"]] == ["TEST101"]
+
+
+def test_faculty_cannot_view_cgpa_without_assigned_subject(client, app):
+    with app.app_context():
+        user = User(
+            email="unassigned.cgpa@example.com",
+            password_hash=generate_password_hash("StudentTest123!"),
+            role="Student",
+            is_active=True,
+        )
+        db.session.add(user)
+        db.session.flush()
+        student = Student(
+            user_id=user.user_id,
+            registration_number="TEST-CGPA-UNASSIGNED",
+            first_name="Unassigned",
+            course="Test Course",
+            admission_year=2026,
+        )
+        db.session.add(student)
+        db.session.flush()
+        subject = Subject(
+            subject_code="TEST204",
+            subject_name="Unassigned Student Subject",
+            credits=3.0,
+            semester_id=1,
+        )
+        db.session.add(subject)
+        db.session.flush()
+        db.session.add(StudentSubject(
+            student_id=student.student_id,
+            subject_id=subject.subject_id,
+        ))
+        add_mark(student.student_id, subject.subject_id, 90, 100)
+        db.session.commit()
+        student_id = student.student_id
+        marks_before = Mark.query.count()
+
+    faculty_login(client)
+    response = client.get(f"/api/students/{student_id}/cgpa")
+
+    assert response.status_code == 403
+    with app.app_context():
+        assert Mark.query.count() == marks_before
+
 
 def test_multiple_assessments_are_aggregated(client, app):
     ids = app.test_ids
@@ -156,9 +246,6 @@ def test_nonexistent_student_returns_404(client):
 
 
 def test_administrator_can_view_student_cgpa(client, app):
-    from werkzeug.security import generate_password_hash
-    from backend.models.user import User
-
     ids = app.test_ids
 
     with app.app_context():
@@ -169,10 +256,12 @@ def test_administrator_can_view_student_cgpa(client, app):
             is_active=True,
         )
         db.session.add(admin)
+        add_mark(ids["student_a"], ids["subject"], 90, 100)
         db.session.commit()
 
     login(client, "admin@example.com", "AdminTest123!")
 
     response = client.get(f"/api/students/{ids['student_a']}/cgpa")
 
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert response.get_json()["cgpa"] == 10.0

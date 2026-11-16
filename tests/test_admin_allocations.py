@@ -204,6 +204,51 @@ def test_admin_can_allocate_student_and_duplicate_is_rejected(client, app):
     assert any(item["student_id"] == student_id for item in listed.get_json())
 
 
+def test_students_without_attendance_or_marks_are_listed_and_allocatable(client, app):
+    create_admin(app)
+    admin_login(client)
+    with app.app_context():
+        semester_id = db.session.get(
+            Subject, app.test_ids["subject"]
+        ).semester_id
+        student = Student(
+            registration_number="NO-HISTORY-001",
+            first_name="No",
+            last_name="History",
+            course="Test Course",
+            admission_year=2026,
+        )
+        db.session.add(student)
+        db.session.commit()
+        student_id = student.student_id
+        assert Attendance.query.filter_by(student_id=student_id).count() == 0
+        assert Mark.query.filter_by(student_id=student_id).count() == 0
+
+    students_response = client.get("/api/admin/students")
+    assert students_response.status_code == 200
+    student_row = next(
+        row for row in students_response.get_json()
+        if row["student_id"] == student_id
+    )
+    assert student_row["registration_number"] == "NO-HISTORY-001"
+
+    allocation_response = client.post(
+        "/api/admin/student-allocations",
+        json={
+            "student_id": student_id,
+            "subject_id": app.test_ids["subject"],
+            "semester_id": semester_id,
+        },
+        headers=csrf_headers(client),
+    )
+
+    assert allocation_response.status_code == 201
+    assert allocation_response.get_json()["allocation"]["student_id"] == student_id
+    with app.app_context():
+        assert Attendance.query.filter_by(student_id=student_id).count() == 0
+        assert Mark.query.filter_by(student_id=student_id).count() == 0
+
+
 @pytest.mark.parametrize(
     ("field", "value", "status"),
     [

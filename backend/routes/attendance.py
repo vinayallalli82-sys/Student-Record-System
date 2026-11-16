@@ -172,13 +172,35 @@ def my_attendance():
     if student is None:
         return jsonify({"error": "Student profile not found."}), 404
 
-    records = (
+    raw_semester_id = request.args.get("semester_id")
+    semester_id = None
+    if raw_semester_id is not None:
+        try:
+            semester_id = int(raw_semester_id)
+        except (TypeError, ValueError):
+            return jsonify({
+                "error": "semester_id must be a positive integer."
+            }), 400
+        if str(semester_id) != raw_semester_id or semester_id <= 0:
+            return jsonify({
+                "error": "semester_id must be a positive integer."
+            }), 400
+
+    query = (
         db.session.query(Attendance, Subject)
         .join(Subject, Attendance.subject_id == Subject.subject_id)
+        .join(
+            StudentSubject,
+            and_(
+                StudentSubject.subject_id == Attendance.subject_id,
+                StudentSubject.student_id == Attendance.student_id,
+            ),
+        )
         .filter(Attendance.student_id == student.student_id)
-        .order_by(Attendance.attendance_date.desc())
-        .all()
     )
+    if semester_id is not None:
+        query = query.filter(Subject.semester_id == semester_id)
+    records = query.order_by(Attendance.attendance_date.desc()).all()
 
     return jsonify([
         attendance_to_dict(record, subject)

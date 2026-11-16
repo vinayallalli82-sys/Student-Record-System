@@ -1491,6 +1491,13 @@ async function loadSavedMarks() {
             const row = table.querySelectorAll("tbody tr")[index];
 
             if (!row) return;
+            if (!["ISA 1", "ISA 2", "ESA"].includes(mark.assessment_name)) {
+                row.setAttribute(
+                    "aria-label",
+                    `Historical assessment record ${mark.mark_id}; read only`
+                );
+                return;
+            }
 
             row.tabIndex = 0;
             row.setAttribute("role", "button");
@@ -1969,18 +1976,44 @@ document.getElementById("adminAllocationSemester")?.addEventListener("change", (
     );
 });
 
+const adminNewRole = document.getElementById("adminNewRole");
+const adminStudentProfileFields = document.getElementById("adminStudentProfileFields");
+
+function syncAdminStudentProfileFields() {
+    const isStudent = adminNewRole?.value === "Student";
+    if (adminStudentProfileFields) {
+        adminStudentProfileFields.hidden = !isStudent;
+        adminStudentProfileFields.disabled = !isStudent;
+    }
+}
+
+adminNewRole?.addEventListener("change", syncAdminStudentProfileFields);
+syncAdminStudentProfileFields();
+
 document.getElementById("adminCreateUserForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const role = adminNewRole.value;
+    const payload = {
+        email: document.getElementById("adminNewEmail").value,
+        password: document.getElementById("adminNewPassword").value,
+        role
+    };
+    if (role === "Student") {
+        payload.student_profile = {
+            registration_number: document.getElementById("adminStudentRegistrationNumber").value.trim(),
+            first_name: document.getElementById("adminStudentFirstName").value.trim(),
+            last_name: document.getElementById("adminStudentLastName").value.trim(),
+            course: document.getElementById("adminStudentCourse").value.trim(),
+            admission_year: Number(document.getElementById("adminStudentAdmissionYear").value)
+        };
+    }
     try {
         const user = await api("/api/admin/users", {
             method: "POST",
-            body: JSON.stringify({
-                email: document.getElementById("adminNewEmail").value,
-                password: document.getElementById("adminNewPassword").value,
-                role: document.getElementById("adminNewRole").value
-            })
+            body: JSON.stringify(payload)
         });
         event.currentTarget.reset();
+        syncAdminStudentProfileFields();
         showMessage(document.getElementById("adminAccountMessage"), `Created ${user.user.email}.`);
         await loadAdminData();
     } catch (error) {

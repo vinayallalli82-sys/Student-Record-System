@@ -15,6 +15,7 @@ from backend.models.semester import Semester
 from backend.models.subject import Subject
 from backend.models.mark import Mark
 from backend.models.attendance import Attendance
+from backend.models.student_subject import StudentSubject
 
 
 @pytest.fixture
@@ -62,6 +63,10 @@ def app(monkeypatch):
         )
         db.session.add(subject)
         db.session.flush()
+        db.session.add(StudentSubject(
+            student_id=student.student_id,
+            subject_id=subject.subject_id,
+        ))
 
         mark = Mark(
             student_id=student.student_id,
